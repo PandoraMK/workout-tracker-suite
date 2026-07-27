@@ -5,8 +5,30 @@ from openpyxl import Workbook, load_workbook
 import pandas as pd
 import streamlit as st
 
+# --- Load User Profile First (Required for st.set_page_config) ---
+user_profile_file = "user_profile.json"
+default_profile = {
+    "name": "Modiri",
+    "body_weight": 88.0,
+    "gender": "Male",
+    "age": 25,
+    "height": 178.0,
+}
+
+if os.path.exists(user_profile_file):
+  try:
+    with open(user_profile_file, "r") as f:
+      loaded_profile = json.load(f)
+      default_profile.update(loaded_profile)
+  except:
+    pass
+
+current_user = default_profile.get("name", "Modiri")
+
 st.set_page_config(
-    page_title="Your Personal Workout Master Suite", page_icon="💪", layout="centered"
+    page_title=f"{current_user}'s Workout Master Suite",
+    page_icon="💪",
+    layout="centered",
 )
 
 file_path = "Workout_Master_Suite.xlsx"
@@ -38,28 +60,10 @@ def create_default_workbook(path):
 if not os.path.exists(file_path):
   create_default_workbook(file_path)
 
-# --- Persistent User Profile Setup ---
-user_profile_file = "user_profile.json"
-default_profile = {
-    "name": "Modiri",
-    "body_weight": 88.0,
-    "gender": "Male",
-    "age": 25,
-    "height": 178.0,
-}
-
-if os.path.exists(user_profile_file):
-  try:
-    with open(user_profile_file, "r") as f:
-      loaded_profile = json.load(f)
-      default_profile.update(loaded_profile)
-  except:
-    pass
-
 if "user_profile" not in st.session_state:
   st.session_state.user_profile = default_profile
 
-# Sidebar for User Profile & Settings
+# Sidebar for User Profile & Settings (Persistent)
 with st.sidebar:
   st.markdown("### ⚙️ Athlete Profile")
   p = st.session_state.user_profile
@@ -86,7 +90,7 @@ with st.sidebar:
   )
   entered_height = st.number_input(
       "Height (cm)",
-      min_value=60.0,
+      min_value=100.0,
       max_value=250.0,
       value=float(p.get("height", 178.0)),
       step=1.0,
@@ -105,15 +109,15 @@ with st.sidebar:
         json.dump(st.session_state.user_profile, f)
     except:
       pass
-    st.success("Profile saved successfully!")
+    st.success("Profile saved! Refresh page to update title.")
 
 current_user = st.session_state.user_profile.get("name", "Modiri")
 
 st.title(f"💪 {current_user}'s Workout Master Suite")
 st.write(
     f"Elite training tracker for **{current_user}** (BW:"
-    f" {st.session_state.user_profile.get('body_weight')}kg) built with dynamic"
-    " weight progressions & analytics."
+    f" {st.session_state.user_profile.get('body_weight')}kg) built with home"
+    " workouts, cardio tracking, & targeted stretching guides."
 )
 
 # Navigation Tabs for enhanced structure
@@ -126,7 +130,7 @@ tab1, tab2, tab3 = st.tabs(
 )
 
 with tab1:
-  st.subheader("Add Exercise Details")
+  st.subheader("Add Exercise / Activity Details")
 
   routine_exercises_map = {
       "Upper Body A": [
@@ -157,7 +161,23 @@ with tab1:
           "Romanian Deadlift",
           "Leg Press",
       ],
-      "Cardio": ["Indoor Treadmill Run", "Assault Bike"],
+      "Home Workouts": [
+          "Standard Push-Ups",
+          "Pike Push-Ups",
+          "Bodyweight Squats",
+          "Chair Bulgarian Split Squats",
+          "Walking Lunges",
+          "Glute Bridges",
+          "Chair Dips",
+          "Superman Back Extensions",
+          "Plank Hold",
+      ],
+      "Cardio": [
+          "Outside Running",
+          "Indoor Treadmill Run",
+          "Assault Bike",
+          "Rowing Machine",
+      ],
       "Full Body": [
           "Barbell Back Squat",
           "Barbell Bench Press",
@@ -184,76 +204,172 @@ with tab1:
 
   with col2:
     exercise_choice = st.selectbox(
-        "Select Exercise for Routine", available_exercises + ["Other (Type Below)"]
+        "Select Exercise / Activity", available_exercises + ["Other (Type Below)"]
     )
     if exercise_choice == "Other (Type Below)":
       exercise_name = st.text_input("Type Exercise Name", "New Exercise")
     else:
       exercise_name = exercise_choice
 
+  # --- TARGETED STRETCHING GUIDE BASED ON ROUTINE ---
   st.markdown("---")
-  st.write("🏋️ **Set & Weight Progression (Pyramids / Weight Changes)**")
+  with st.expander(
+      f"🧘 View Recommended Stretches for: **{routine_name}**", expanded=False
+  ):
+    if "Upper" in routine_name:
+      st.markdown("""
+            * **Pre-Workout Dynamic Stretches (Before you lift):**
+              * *Arm Circles:* 15 circles forward and backward to lubricate shoulder joints.
+              * *Band Pull-Aparts or Doorway Chest Stretch:* 2 sets of 15 reps to activate upper back and open chest.
+              * *Torso Twists:* 10 per side to mobilize thoracic spine.
+            * **Post-Workout Static Stretches (After your workout):**
+              * *Cross-Body Shoulder Stretch:* Hold 30 seconds per arm.
+              * *Overhead Tricep Stretch:* Hold 30 seconds per arm.
+              * *Doorway Chest Stretch:* Hold 30 seconds to relieve front delts and pectorals.
+            """)
+    elif "Lower" in routine_name:
+      st.markdown("""
+            * **Pre-Workout Dynamic Stretches (Before you lift):**
+              * *Leg Swings:* 15 front-to-back and 15 side-to-side per leg.
+              * *World's Greatest Stretch:* 5 reps per side (deep lunges with thoracic rotation).
+              * *Bodyweight Squat Pries:* Hold bottom of a squat for 5 seconds x 5 reps.
+            * **Post-Workout Static Stretches (After your workout):**
+              * *Standing Quad Stretch:* Hold 30 seconds per leg.
+              * *Seated Hamstring Stretch:* Hold 45 seconds focusing on breathing.
+              * *Figure-4 Glute Stretch:* Hold 30 seconds per leg to release tight glutes/hips.
+            """)
+    elif "Cardio" in routine_name:
+      st.markdown("""
+            * **Pre-Workout Dynamic Stretches (Before you run/cardio):**
+              * *High Knees & Butt Kicks:* 30 seconds each to elevate heart rate.
+              * *Walking Lunges with Twist:* 10 steps per leg to open hip flexors.
+              * *Ankle Bounces:* 20 reps to prep calves and Achilles tendons.
+            * **Post-Workout Static Stretches (After your session):**
+              * *Wall Calf Stretch:* Hold 45 seconds per leg.
+              * *Hip Flexor Kneeling Stretch:* Hold 45 seconds per side.
+              * *Hamstring Floor Stretch:* Hold 45 seconds.
+            """)
+    elif "Home Workouts" in routine_name:
+      st.markdown("""
+            * **Pre-Workout Dynamic Stretches (Before bodyweight exercises):**
+              * *Arm Swings & Jumping Jacks:* 1 minute to warm up the whole body.
+              * *Inchworms:* 5-8 reps to stretch hamstrings and activate shoulders/core.
+              * *Dynamic Lunges:* 10 reps per leg.
+            * **Post-Workout Static Stretches (After your home session):**
+              * *Child’s Pose:* Hold 60 seconds to decompress lower back and lats.
+              * *Downward Dog:* Hold 45 seconds for calves, hamstrings, and shoulders.
+              * *Chest Opener Stretch:* Hold 30 seconds.
+            """)
+    else:
+      st.markdown("""
+            * **Pre-Workout Dynamic Stretches:** Arm circles, leg swings, light bodyweight movements.
+            * **Post-Workout Static Stretches:** Full body static stretches focusing on worked muscle groups.
+            """)
 
-  num_blocks = st.selectbox(
-      "How many different weight blocks?",
-      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-      index=0,
-  )
+  st.markdown("---")
 
-  total_sets = 0
-  total_volume = 0
-  weight_parts = []
-  representative_reps = 8
-
-  for i in range(num_blocks):
-    if num_blocks > 1:
-      st.caption(f"Block {i+1}")
-
+  # --- DYNAMIC FORM: CARDIO VS WEIGHTS ---
+  if routine == "Cardio":
+    st.write("🏃 **Cardio Metrics**")
     c1, c2, c3 = st.columns(3)
     with c1:
-      s = st.number_input(
-          f"Sets ({i+1})",
-          min_value=1,
-          max_value=20,
-          value=2 if i > 0 else 4,
-          key=f"sets_{i}",
+      cardio_dist = st.number_input(
+          "Distance (km)", min_value=0.1, max_value=100.0, value=5.0, step=0.1
       )
     with c2:
-      r = st.number_input(
-          f"Reps ({i+1})",
-          min_value=1,
-          max_value=100,
-          value=8,
-          key=f"reps_{i}",
+      cardio_time = st.number_input(
+          "Duration (mins)", min_value=1, max_value=600, value=30, step=1
       )
     with c3:
-      w = st.number_input(
-          f"Weight kg ({i+1})",
-          min_value=0.0,
-          max_value=500.0,
-          value=40.0 + (i * 5.0),
-          step=2.5,
-          key=f"weight_{i}",
+      cardio_hr = st.number_input(
+          "Avg Heart Rate (bpm)", min_value=0, max_value=220, value=145, step=1
       )
 
-    total_sets += s
-    if i == 0:
-      representative_reps = r
+    # Calculate pace (min per km)
+    if cardio_dist > 0:
+      pace_mins = int(cardio_time // cardio_dist)
+      pace_secs = int(((cardio_time / cardio_dist) - pace_mins) * 60)
+      pace_str = f"{pace_mins}m {pace_secs}s / km"
+    else:
+      pace_str = "N/A"
 
-    total_volume += s * r * w
-    weight_parts.append(f"{w}kg")
+    st.info(
+        f"📊 **Cardio Summary:** Distance: **{cardio_dist} km** | Duration:"
+        f" **{cardio_time} mins** | Pace: **{pace_str}** | HR:"
+        f" **{cardio_hr if cardio_hr > 0 else 'N/A'} bpm**"
+    )
 
-  if len(weight_parts) == 1:
-    weight_str = weight_parts[0]
-  elif len(weight_parts) == 2:
-    weight_str = f"{weight_parts[0]} & {weight_parts[1]}"
+    total_sets = 1
+    representative_reps = cardio_time
+    weight_str = f"{cardio_dist} km"
+    total_volume = 0
+    total_volume_str = f"HR: {cardio_hr}bpm" if cardio_hr > 0 else "N/A"
+
   else:
-    weight_str = ", ".join(weight_parts[:-1]) + f" & {weight_parts[-1]}"
+    st.write("🏋️ **Set & Weight Progression (Pyramids / Weight Changes)**")
 
-  st.info(
-      f"📊 **Calculated Summary:** Total Sets: **{total_sets}** | Combined"
-      f" Weight: **{weight_str}** | Total Volume: **{total_volume} kg**"
-  )
+    num_blocks = st.selectbox(
+        "How many different weight blocks?",
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        index=0,
+    )
+
+    total_sets = 0
+    total_volume = 0
+    weight_parts = []
+    representative_reps = 8
+
+    for i in range(num_blocks):
+      if num_blocks > 1:
+        st.caption(f"Block {i+1}")
+
+      c1, c2, c3 = st.columns(3)
+      with c1:
+        s = st.number_input(
+            f"Sets ({i+1})",
+            min_value=1,
+            max_value=20,
+            value=2 if i > 0 else 4,
+            key=f"sets_{i}",
+        )
+      with c2:
+        r = st.number_input(
+            f"Reps ({i+1})",
+            min_value=1,
+            max_value=100,
+            value=12 if routine == "Home Workouts" else 8,
+            key=f"reps_{i}",
+        )
+      with c3:
+        w = st.number_input(
+            f"Weight kg ({i+1}) (0 for Bodyweight)",
+            min_value=0.0,
+            max_value=500.0,
+            value=0.0 if routine == "Home Workouts" else 40.0 + (i * 5.0),
+            step=2.5,
+            key=f"weight_{i}",
+        )
+
+      total_sets += s
+      if i == 0:
+        representative_reps = r
+
+      total_volume += s * r * w
+      weight_parts.append(f"{w}kg")
+
+    if len(weight_parts) == 1:
+      weight_str = weight_parts[0]
+    elif len(weight_parts) == 2:
+      weight_str = f"{weight_parts[0]} & {weight_parts[1]}"
+    else:
+      weight_str = ", ".join(weight_parts[:-1]) + f" & {weight_parts[-1]}"
+
+    total_volume_str = f"{total_volume}kg"
+
+    st.info(
+        f"📊 **Calculated Summary:** Total Sets: **{total_sets}** | Combined"
+        f" Weight: **{weight_str}** | Total Volume: **{total_volume} kg**"
+    )
 
   st.markdown("---")
   col_rpe, col_date = st.columns(2)
@@ -272,7 +388,6 @@ with tab1:
         next_row = ws.max_row + 1
 
         date_str = log_date.strftime("%Y/%m/%d")
-        total_volume_str = f"{total_volume}kg"
 
         ws.cell(row=next_row, column=1, value=date_str)
         ws.cell(row=next_row, column=2, value=routine_name)
@@ -317,17 +432,21 @@ with tab2:
             df_analytics["Total Volume (kg)"]
             .astype(str)
             .str.replace("kg", "", regex=False)
-            .astype(float)
+            .str.replace("HR: ", "", regex=False)
+            .str.replace("bpm", "", regex=False)
         )
+        df_analytics["Clean_Volume"] = pd.to_numeric(
+            df_analytics["Clean_Volume"], errors="coerce"
+        ).fillna(0)
 
-        st.markdown("### Total Volume Lifted Over Time")
+        st.markdown("### Total Lift Volume / Activity Output Over Time")
         chart_data = df_analytics[["Date", "Clean_Volume"]].dropna()
         if not chart_data.empty:
           st.line_chart(
               chart_data.set_index("Date"), use_container_width=True
           )
         else:
-          st.info("Log a few workouts to see your volume progression chart!")
+          st.info("Log a few workouts to see your progression chart!")
 
         st.markdown("---")
         st.markdown("### Filter History by Routine / Focus")
@@ -358,7 +477,8 @@ with tab3:
       * *10:* Absolute maximum effort (0 reps left in the tank).
       * *8 - 9:* Hard set; you could have realistically done 1 or 2 more reps.
       * *6 - 7:* Moderate effort; comfortable with several reps left.
-    * **Total Volume:** The overall workload calculated as $\text{Sets} \times \text{Reps} \times \text{Weight}$. Tracking volume over time is key for progressive overload and muscle hypertrophy.
-    * **Pyramids / Weight Blocks:** Changing weights across sets within the same exercise (e.g., starting lighter for warm-up/higher reps, then increasing the weight for working sets).
-    * **Routine / Focus:** The structural split of your training day (e.g., Upper Body A/B, Lower Body A/B) ensuring balanced muscle recovery and growth.
+    * **Total Volume:** The overall workload calculated as $\text{Sets} \ttimes \ttext{Reps} \ttimes \text{Weight}$. Tracking volume over time is key for progressive overload and muscle hypertrophy.
+    * **Cardio Pace:** Calculated as time divided by distance ($\text{Minutes} / \text{km}$) to track running/cardio efficiency over time.
+    * **Home Workouts:** Bodyweight training focused on time-under-tension, high rep ranges, and calisthenics progression.
+    * **Routine / Focus:** The structural split of your training day (e.g., Upper/Lower Body, Home Workouts, Cardio) ensuring balanced recovery and growth.
     """)
