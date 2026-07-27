@@ -32,17 +32,16 @@ st.set_page_config(
 )
 
 file_path = "Workout_Master_Suite.xlsx"
+reviews_file_path = "Workout_Reviews.xlsx"
 
 
 def create_default_workbook(path):
   wb = Workbook()
   ws = wb.active
   ws.title = "Workout Log"
-
   ws.append([])
   ws.append([])
   ws.append([])
-
   headers = [
       "Date",
       "Routine / Focus",
@@ -57,8 +56,27 @@ def create_default_workbook(path):
   wb.save(path)
 
 
+def create_default_reviews_workbook(path):
+  wb = Workbook()
+  ws = wb.active
+  ws.title = "Reviews"
+  headers = [
+      "Date",
+      "Time",
+      "Tester Name",
+      "Rating (1-5)",
+      "Category",
+      "Feedback Message",
+  ]
+  ws.append(headers)
+  wb.save(path)
+
+
 if not os.path.exists(file_path):
   create_default_workbook(file_path)
+
+if not os.path.exists(reviews_file_path):
+  create_default_reviews_workbook(reviews_file_path)
 
 if "user_profile" not in st.session_state:
   st.session_state.user_profile = default_profile
@@ -117,15 +135,16 @@ st.title(f"💪 {current_user}'s Workout Master Suite")
 st.write(
     f"Elite training tracker for **{current_user}** (BW:"
     f" {st.session_state.user_profile.get('body_weight')}kg) built with home"
-    " workouts, cardio tracking, & targeted stretching guides."
+    " workouts, cardio tracking, & separate reviews logging."
 )
 
 # Navigation Tabs for enhanced structure
-tab1, tab2, tab3 = st.tabs(
+tab1, tab2, tab3, tab4 = st.tabs(
     [
         "📝 Logger Form",
         "📈 Progress & Analytics",
         "📖 Glossary & Definitions",
+        "💬 Feedback & Reviews",
     ]
 )
 
@@ -285,7 +304,6 @@ with tab1:
           "Avg Heart Rate (bpm)", min_value=0, max_value=220, value=145, step=1
       )
 
-    # Calculate pace (min per km)
     if cardio_dist > 0:
       pace_mins = int(cardio_time // cardio_dist)
       pace_secs = int(((cardio_time / cardio_dist) - pace_mins) * 60)
@@ -477,8 +495,85 @@ with tab3:
       * *10:* Absolute maximum effort (0 reps left in the tank).
       * *8 - 9:* Hard set; you could have realistically done 1 or 2 more reps.
       * *6 - 7:* Moderate effort; comfortable with several reps left.
-    * **Total Volume:** The overall workload calculated as $\text{Sets} \ttimes \ttext{Reps} \ttimes \text{Weight}$. Tracking volume over time is key for progressive overload and muscle hypertrophy.
+    * **Total Volume:** The overall workload calculated as $\text{Sets} \times \text{Reps} \times \text{Weight}$. Tracking volume over time is key for progressive overload and muscle hypertrophy.
     * **Cardio Pace:** Calculated as time divided by distance ($\text{Minutes} / \text{km}$) to track running/cardio efficiency over time.
     * **Home Workouts:** Bodyweight training focused on time-under-tension, high rep ranges, and calisthenics progression.
     * **Routine / Focus:** The structural split of your training day (e.g., Upper/Lower Body, Home Workouts, Cardio) ensuring balanced recovery and growth.
     """)
+
+with tab4:
+  st.subheader("💬 Tester Suggestion & Review Box")
+  st.write(
+      "Have a suggestion, found a bug, or want to leave feedback on the app?"
+      " Drop it below!"
+  )
+
+  with st.form("feedback_form"):
+    fb_name = st.text_input("Your Name / Handle", value=current_user)
+    fb_rating = st.slider(
+        "Rating (1 = Needs Work, 5 = Awesome!)",
+        min_value=1,
+        max_value=5,
+        value=5,
+    )
+    fb_category = st.selectbox(
+        "Feedback Category",
+        [
+            "General Review",
+            "Bug Report",
+            "Feature Request",
+            "UI / Design Suggestion",
+        ],
+    )
+    fb_message = st.text_area(
+        "Your Feedback or Suggestion",
+        placeholder="Type your feedback here...",
+    )
+    submit_fb = st.form_submit_button("Submit Feedback")
+
+    if submit_fb:
+      if fb_message.strip():
+        try:
+          if not os.path.exists(reviews_file_path):
+            create_default_reviews_workbook(reviews_file_path)
+
+          wb_rev = load_workbook(reviews_file_path)
+          ws_rev = wb_rev.active
+
+          now_dt = datetime.datetime.now()
+          fb_date_str = now_dt.strftime("%Y/%m/%d")
+          fb_time_str = now_dt.strftime("%H:%M:%S")
+
+          ws_rev.append(
+              [
+                  fb_date_str,
+                  fb_time_str,
+                  fb_name,
+                  fb_rating,
+                  fb_category,
+                  fb_message,
+              ]
+          )
+          wb_rev.save(reviews_file_path)
+          st.success(
+              "Thank you! Your feedback has been successfully saved to"
+              " Workout_Reviews.xlsx."
+          )
+        except Exception as e:
+          st.error(f"Error saving feedback: {e}")
+      else:
+        st.warning("Please type a message before submitting.")
+
+  st.markdown("---")
+  st.subheader("📥 Received Feedback & Reviews")
+  try:
+    if os.path.exists(reviews_file_path):
+      df_fb = pd.read_excel(reviews_file_path)
+      if not df_fb.empty:
+        st.dataframe(df_fb, use_container_width=True)
+      else:
+        st.info("No reviews submitted yet.")
+    else:
+      st.info("No reviews file found.")
+  except Exception as e:
+    st.info(f"Could not load reviews: {e}")
