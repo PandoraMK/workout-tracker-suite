@@ -77,7 +77,7 @@ def create_default_weight_workbook(path):
   wb = Workbook()
   ws = wb.active
   ws.title = "Body Weight Log"
-  headers = ["Date", "Body Weight (kg)", "Body Fat %", "Notes"]
+  headers = ["Date", "Body Weight (kg)", "Notes"]
   ws.append(headers)
   wb.save(path)
 
@@ -453,14 +453,14 @@ with tab1:
     st.info(f"Could not load log preview: {e}")
 
 with tab2:
-  st.subheader("⚖️ Body Weight Tracker & Recomposition Log")
+  st.subheader("⚖️ Body Weight Tracker")
   st.write(
       "Log your body weight regularly to track progress toward your 85 kg"
       " target."
   )
 
   with st.form("body_weight_form"):
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
     with c1:
       logged_bw = st.number_input(
           "Body Weight (kg)",
@@ -470,14 +470,6 @@ with tab2:
           step=0.1,
       )
     with c2:
-      logged_bf = st.number_input(
-          "Body Fat % (Optional)",
-          min_value=0.0,
-          max_value=60.0,
-          value=22.0,
-          step=0.1,
-      )
-    with c3:
       logged_weight_date = st.date_input("Date", datetime.date.today())
 
     bw_notes = st.text_input(
@@ -496,7 +488,6 @@ with tab2:
             [
                 logged_weight_date.strftime("%Y/%m/%d"),
                 logged_bw,
-                logged_bf,
                 bw_notes,
             ]
         )
