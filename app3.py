@@ -1002,133 +1002,111 @@ with tab3:
         conn_can.close()
 
       if not df_cardio_an.empty:
-        st.markdown("### Cardio Distance Over Time (km)")
-        dist_chart_data = df_cardio_an[["Date", "Distance (km)"]].dropna()
-        if not dist_chart_data.empty:
+        st.markdown("### Cardio Distance Over Time")
+        cardio_chart_data = df_cardio_an[["Date", "Distance (km)"]].dropna()
+        if not cardio_chart_data.empty:
           st.line_chart(
-              dist_chart_data.set_index("Date"), use_container_width=True
-          )
-
-        st.markdown("### Cardio Duration Over Time (mins)")
-        dur_chart_data = df_cardio_an[["Date", "Duration (mins)"]].dropna()
-        if not dur_chart_data.empty:
-          st.line_chart(
-              dur_chart_data.set_index("Date"), use_container_width=True
+              cardio_chart_data.set_index("Date"), use_container_width=True
           )
 
         st.markdown("---")
-        st.markdown("### Full Cardio Activity History")
+        st.markdown("### Cardio Logs History")
         st.dataframe(df_cardio_an, use_container_width=True)
       else:
-        st.info("Log cardio sessions to see your endurance analytics.")
+        st.info("Log cardio sessions to view performance analytics!")
     except Exception as e:
-      st.info(f"Error loading cardio analytics: {e}")
+      st.info(f"Error loading cardio charts: {e}")
 
 with tab4:
-  st.subheader("📖 Fitness Glossary & Terminology Guide")
+  st.subheader("📖 Glossary & Definitions")
   st.markdown("""
-    * **RPE (Rate of Perceived Exertion):** A scale from **1 to 10** used to measure how intense a set felt relative to failure.
-      * *10:* Absolute maximum effort (0 reps left in the tank).
-      * *8 - 9:* Hard set; you could have realistically done 1 or 2 more reps.
-      * *6 - 7:* Moderate effort; comfortable with several reps left.
-    * **Total Volume:** The overall workload calculated as Sets $\\times$ Reps $\\times$ Weight. Tracking volume over time is key for progressive overload and muscle hypertrophy.
-    * **Cardio Pace:** Calculated as time divided by distance (Minutes / km) to track running/cardio efficiency over time.
-    * **Home Workouts:** Bodyweight training focused on time-under-tension, high rep ranges, and calisthenics progression.
-    * **Routine / Focus:** The structural split of your training day (e.g., Upper/Lower Body, Home Workouts) ensuring balanced recovery and growth.
-    """)
+  * **RPE (Rate of Perceived Exertion):** A scale from 1 to 10 measuring how intense a set felt. 10 is absolute failure, while 7-8 leaves 2-3 reps in reserve (RIR).
+  * **Total Volume:** The total weight lifted calculated as Sets × Reps × Weight. Used to track progressive overload over time.
+  * **Pace:** The time taken per kilometer during a cardio session, automatically calculated from distance and duration.
+  * **Body Recomposition:** The simultaneous process of building muscle mass while reducing body fat percentage.
+  """)
 
 with tab5:
-  st.subheader("💬 Tester Suggestion & Review Box")
+  st.subheader("💬 Feedback & Reviews")
   st.write(
-      "Have a suggestion, found a bug, or want to leave feedback on the app?"
-      " Drop it below!"
+      "Share your thoughts, feature requests, or bug reports regarding the"
+      " Workout Master Suite."
   )
 
-  with st.form("feedback_form"):
-    fb_name = st.text_input("Your Name / Handle", value=current_user)
-    fb_rating = st.slider(
-        "Rating (1 = Needs Work, 5 = Awesome!)",
-        min_value=1,
-        max_value=5,
-        value=5,
-    )
-    fb_category = st.selectbox(
-        "Feedback Category",
+  with st.form("review_form"):
+    tester_name = st.text_input("Your Name / Handle", value=st.session_state.name)
+    rating = st.slider("Rating", min_value=1, max_value=5, value=5)
+    category = st.selectbox(
+        "Category",
         [
-            "General Review",
-            "Bug Report",
             "Feature Request",
-            "UI / Design Suggestion",
+            "Bug Report",
+            "UI/UX Feedback",
+            "General Praise",
         ],
     )
-    fb_message = st.text_area(
-        "Your Feedback or Suggestion",
-        placeholder="Type your feedback here...",
+    message = st.text_area(
+        "Message / Feedback", placeholder="Type your feedback here..."
     )
-    submit_fb = st.form_submit_button("Submit Feedback")
+    submit_review = st.form_submit_button("Submit Review")
 
-    if submit_fb:
-      if fb_message.strip():
-        try:
-          if DB_MODE == "cloud":
-            cursor = conn.cursor()
-          else:
-            local_conn = sqlite3.connect(DB_FILE)
-            cursor = local_conn.cursor()
+    if submit_review:
+      try:
+        if DB_MODE == "cloud":
+          cursor = conn.cursor()
+        else:
+          local_conn = sqlite3.connect(DB_FILE)
+          cursor = local_conn.cursor()
 
-          now_dt = datetime.now()
-          fb_date_str = now_dt.strftime("%Y/%m/%d")
-          fb_time_str = now_dt.strftime("%H:%M:%S")
+        current_date = datetime.today().strftime("%Y/%m/%d")
+        current_time_str = datetime.now().strftime("%H:%M:%S")
+        cursor.execute(
+            """
+                INSERT INTO reviews (date, time, tester_name, rating, category, message)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                current_date,
+                current_time_str,
+                tester_name,
+                rating,
+                category,
+                message,
+            ),
+        )
+        if DB_MODE == "cloud":
+          conn.commit()
+        else:
+          local_conn.commit()
+          local_conn.close()
 
-          cursor.execute(
-              """
-                    INSERT INTO reviews (date, time, tester_name, rating, category, message)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """,
-              (
-                  fb_date_str,
-                  fb_time_str,
-                  fb_name,
-                  fb_rating,
-                  fb_category,
-                  fb_message,
-              ),
-          )
-          if DB_MODE == "cloud":
-            conn.commit()
-          else:
-            local_conn.commit()
-            local_conn.close()
-
-          st.success("Thank you! Your feedback has been successfully saved.")
-        except Exception as e:
-          st.error(f"Error saving feedback: {e}")
-      else:
-        st.warning("Please type a message before submitting.")
+        st.success("Thank you! Your feedback has been successfully submitted.")
+      except Exception as e:
+        st.error(f"Error submitting review: {e}")
 
   st.markdown("---")
-  st.subheader("📥 Received Feedback & Reviews")
+  st.markdown("### Recent Feedback & Reviews")
   try:
     if DB_MODE == "cloud":
-      df_fb = pd.read_sql_query(
-          "SELECT date AS Date, time AS Time, tester_name AS 'Tester Name',"
-          " rating AS 'Rating (1-5)', category AS Category, message AS 'Feedback"
-          " Message' FROM reviews ORDER BY id DESC",
+      df_reviews = pd.read_sql_query(
+          "SELECT date AS Date, time AS Time, tester_name AS 'Tester', rating"
+          " AS 'Rating (1-5)', category AS Category, message AS Message FROM"
+          " reviews ORDER BY id DESC",
           conn,
       )
     else:
       conn_rev = sqlite3.connect(DB_FILE)
-      df_fb = pd.read_sql_query(
-          "SELECT date AS Date, time AS Time, tester_name AS 'Tester Name',"
-          " rating AS 'Rating (1-5)', category AS Category, message AS 'Feedback"
-          " Message' FROM reviews ORDER BY id DESC",
+      df_reviews = pd.read_sql_query(
+          "SELECT date AS Date, time AS Time, tester_name AS 'Tester', rating"
+          " AS 'Rating (1-5)', category AS Category, message AS Message FROM"
+          " reviews ORDER BY id DESC",
           conn_rev,
       )
       conn_rev.close()
 
-    if not df_fb.empty:
-      st.dataframe(df_fb, use_container_width=True)
+    if not df_reviews.empty:
+      st.dataframe(df_reviews, use_container_width=True)
     else:
-      st.info("No reviews submitted yet.")
+      st.info("No reviews submitted yet. Be the first to share your feedback!")
   except Exception as e:
     st.info(f"Could not load reviews: {e}")
