@@ -33,6 +33,7 @@ st.set_page_config(
 
 file_path = "Workout_Master_Suite.xlsx"
 reviews_file_path = "Workout_Reviews.xlsx"
+weight_file_path = "Body_Weight_Log.xlsx"
 
 
 def create_default_workbook(path):
@@ -72,11 +73,23 @@ def create_default_reviews_workbook(path):
   wb.save(path)
 
 
+def create_default_weight_workbook(path):
+  wb = Workbook()
+  ws = wb.active
+  ws.title = "Body Weight Log"
+  headers = ["Date", "Body Weight (kg)", "Body Fat %", "Notes"]
+  ws.append(headers)
+  wb.save(path)
+
+
 if not os.path.exists(file_path):
   create_default_workbook(file_path)
 
 if not os.path.exists(reviews_file_path):
   create_default_reviews_workbook(reviews_file_path)
+
+if not os.path.exists(weight_file_path):
+  create_default_weight_workbook(weight_file_path)
 
 if "user_profile" not in st.session_state:
   st.session_state.user_profile = default_profile
@@ -135,13 +148,14 @@ st.title(f"💪 {current_user}'s Workout Master Suite")
 st.write(
     f"Elite training tracker for **{current_user}** (BW:"
     f" {st.session_state.user_profile.get('body_weight')}kg) built with home"
-    " workouts, cardio tracking, & separate reviews logging."
+    " workouts, cardio tracking, weight tracking, & feedback logs."
 )
 
 # Navigation Tabs for enhanced structure
-tab1, tab2, tab3, tab4 = st.tabs(
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
     [
         "📝 Logger Form",
+        "⚖️ Body Weight Tracker",
         "📈 Progress & Analytics",
         "📖 Glossary & Definitions",
         "💬 Feedback & Reviews",
@@ -439,6 +453,84 @@ with tab1:
     st.info(f"Could not load log preview: {e}")
 
 with tab2:
+  st.subheader("⚖️ Body Weight Tracker & Recomposition Log")
+  st.write(
+      "Log your body weight regularly to track progress toward your 85 kg"
+      " target."
+  )
+
+  with st.form("body_weight_form"):
+    c1, c2, c3 = st.columns(3)
+    with c1:
+      logged_bw = st.number_input(
+          "Body Weight (kg)",
+          min_value=30.0,
+          max_value=250.0,
+          value=float(st.session_state.user_profile.get("body_weight", 88.0)),
+          step=0.1,
+      )
+    with c2:
+      logged_bf = st.number_input(
+          "Body Fat % (Optional)",
+          min_value=0.0,
+          max_value=60.0,
+          value=22.0,
+          step=0.1,
+      )
+    with c3:
+      logged_weight_date = st.date_input("Date", datetime.date.today())
+
+    bw_notes = st.text_input(
+        "Notes (e.g., Morning weigh-in, post-run)", placeholder="Optional notes"
+    )
+    submit_bw = st.form_submit_button("Save Body Weight Entry")
+
+    if submit_bw:
+      try:
+        if not os.path.exists(weight_file_path):
+          create_default_weight_workbook(weight_file_path)
+
+        wb_w = load_workbook(weight_file_path)
+        ws_w = wb_w.active
+        ws_w.append(
+            [
+                logged_weight_date.strftime("%Y/%m/%d"),
+                logged_bw,
+                logged_bf,
+                bw_notes,
+            ]
+        )
+        wb_w.save(weight_file_path)
+        st.success(
+            f"Successfully recorded body weight: {logged_bw} kg saved to"
+            " Body_Weight_Log.xlsx!"
+        )
+      except Exception as e:
+        st.error(f"Error saving body weight: {e}")
+
+  st.markdown("---")
+  st.subheader("📈 Body Weight Trend")
+  try:
+    if os.path.exists(weight_file_path):
+      df_bw = pd.read_excel(weight_file_path)
+      if not df_bw.empty:
+        st.dataframe(df_bw, use_container_width=True)
+
+        if "Body Weight (kg)" in df_bw.columns and "Date" in df_bw.columns:
+          chart_bw_data = df_bw[["Date", "Body Weight (kg)"]].dropna()
+          if not chart_bw_data.empty:
+            st.markdown("### Weight Progression Chart")
+            st.line_chart(
+                chart_bw_data.set_index("Date"), use_container_width=True
+            )
+      else:
+        st.info("No body weight entries logged yet.")
+    else:
+      st.info("No body weight log file found.")
+  except Exception as e:
+    st.info(f"Could not load body weight chart: {e}")
+
+with tab3:
   st.subheader("📈 Training Analytics & Progress Charts")
   try:
     if os.path.exists(file_path):
@@ -488,20 +580,20 @@ with tab2:
   except Exception as e:
     st.info(f"Error loading charts: {e}")
 
-with tab3:
+with tab4:
   st.subheader("📖 Fitness Glossary & Terminology Guide")
   st.markdown("""
     * **RPE (Rate of Perceived Exertion):** A scale from **1 to 10** used to measure how intense a set felt relative to failure.
       * *10:* Absolute maximum effort (0 reps left in the tank).
       * *8 - 9:* Hard set; you could have realistically done 1 or 2 more reps.
       * *6 - 7:* Moderate effort; comfortable with several reps left.
-    * **Total Volume:** The overall workload calculated as $\text{Sets} \times \text{Reps} \times \text{Weight}$. Tracking volume over time is key for progressive overload and muscle hypertrophy.
-    * **Cardio Pace:** Calculated as time divided by distance ($\text{Minutes} / \text{km}$) to track running/cardio efficiency over time.
+    * **Total Volume:** The overall workload calculated as Sets $\\times$ Reps $\\times$ Weight. Tracking volume over time is key for progressive overload and muscle hypertrophy.
+    * **Cardio Pace:** Calculated as time divided by distance (Minutes / km) to track running/cardio efficiency over time.
     * **Home Workouts:** Bodyweight training focused on time-under-tension, high rep ranges, and calisthenics progression.
     * **Routine / Focus:** The structural split of your training day (e.g., Upper/Lower Body, Home Workouts, Cardio) ensuring balanced recovery and growth.
     """)
 
-with tab4:
+with tab5:
   st.subheader("💬 Tester Suggestion & Review Box")
   st.write(
       "Have a suggestion, found a bug, or want to leave feedback on the app?"
