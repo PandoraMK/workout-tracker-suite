@@ -1,98 +1,140 @@
 import datetime
+import io
 import json
 import os
-from openpyxl import Workbook, load_workbook
+import sqlite3
 import pandas as pd
 import streamlit as st
 
-# --- Load User Profile First (Required for st.set_page_config) ---
-user_profile_file = "user_profile.json"
-default_profile = {
-    "name": "Modiri",
-    "body_weight": 88.0,
-    "gender": "Male",
-    "age": 25,
-    "height": 178.0,
-}
+# --- Database Setup ---
+DB_FILE = "workout_master.db"
 
-if os.path.exists(user_profile_file):
-  try:
-    with open(user_profile_file, "r") as f:
-      loaded_profile = json.load(f)
-      default_profile.update(loaded_profile)
-  except:
-    pass
 
-current_user = default_profile.get("name", "Modiri")
+def init_db():
+  conn = sqlite3.connect(DB_FILE)
+  cursor = conn.cursor()
+
+  # 1. Workouts Table
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS workouts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            routine TEXT,
+            exercise TEXT,
+            sets INTEGER,
+            reps INTEGER,
+            weight TEXT,
+            total_volume TEXT,
+            rpe REAL
+        )
+    """)
+
+  # 2. Reviews Table
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            time TEXT,
+            tester_name TEXT,
+            rating INTEGER,
+            category TEXT,
+            message TEXT
+        )
+    """)
+
+  # 3. Body Weight Table
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS body_weight (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            body_weight REAL,
+            notes TEXT
+        )
+    """)
+
+  # 4. Profile Table
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS profile (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            name TEXT,
+            body_weight REAL,
+            gender TEXT,
+            age INTEGER,
+            height REAL
+        )
+    """)
+
+  # Insert default profile if not exists
+  cursor.execute(
+      """
+        INSERT OR IGNORE INTO profile (id, name, body_weight, gender, age, height)
+        VALUES (1, 'Modiri', 88.0, 'Male', 25, 178.0)
+    """
+  )
+
+  conn.commit()
+  conn.close()
+
+
+init_db()
+
+
+def load_profile():
+  conn = sqlite3.connect(DB_FILE)
+  cursor = conn.cursor()
+  cursor.execute(
+      "SELECT name, body_weight, gender, age, height FROM profile WHERE id = 1"
+  )
+  row = cursor.fetchone()
+  conn.close()
+  if row:
+    return {
+        "name": row[0],
+        "body_weight": row[1],
+        "gender": row[2],
+        "age": row[3],
+        "height": row[4],
+    }
+  return {
+      "name": "Modiri",
+      "body_weight": 88.0,
+      "gender": "Male",
+      "age": 25,
+      "height": 178.0,
+  }
+
+
+def save_profile_db(profile_data):
+  conn = sqlite3.connect(DB_FILE)
+  cursor = conn.cursor()
+  cursor.execute(
+      """
+        UPDATE profile 
+        SET name = ?, body_weight = ?, gender = ?, age = ?, height = ?
+        WHERE id = 1
+    """,
+      (
+          profile_data["name"],
+          profile_data["body_weight"],
+          profile_data["gender"],
+          profile_data["age"],
+          profile_data["height"],
+      ),
+  )
+  conn.commit()
+  conn.close()
+
+
+if "user_profile" not in st.session_state:
+  st.session_state.user_profile = load_profile()
+
+current_user = st.session_state.user_profile.get("name", "Modiri")
 
 st.set_page_config(
     page_title=f"{current_user}'s Workout Master Suite",
     page_icon="💪",
     layout="centered",
 )
-
-file_path = "Workout_Master_Suite.xlsx"
-reviews_file_path = "Workout_Reviews.xlsx"
-weight_file_path = "Body_Weight_Log.xlsx"
-
-
-def create_default_workbook(path):
-  wb = Workbook()
-  ws = wb.active
-  ws.title = "Workout Log"
-  ws.append([])
-  ws.append([])
-  ws.append([])
-  headers = [
-      "Date",
-      "Routine / Focus",
-      "Exercise",
-      "Sets",
-      "Reps",
-      "Weight (kg)",
-      "Total Volume (kg)",
-      "RPE (1-10)",
-  ]
-  ws.append(headers)
-  wb.save(path)
-
-
-def create_default_reviews_workbook(path):
-  wb = Workbook()
-  ws = wb.active
-  ws.title = "Reviews"
-  headers = [
-      "Date",
-      "Time",
-      "Tester Name",
-      "Rating (1-5)",
-      "Category",
-      "Feedback Message",
-  ]
-  ws.append(headers)
-  wb.save(path)
-
-
-def create_default_weight_workbook(path):
-  wb = Workbook()
-  ws = wb.active
-  ws.title = "Body Weight Log"
-  headers = ["Date", "Body Weight (kg)", "Notes"]
-  ws.append(headers)
-  wb.save(path)
-
-
-if not os.path.exists(file_path):
-  create_default_workbook(file_path)
-
-if not os.path.exists(reviews_file_path):
-  create_default_reviews_workbook(reviews_file_path)
-
-if not os.path.exists(weight_file_path):
-  create_default_weight_workbook(weight_file_path)
-
-if "user_profile" not in st.session_state:
-  st.session_state.user_profile = default_profile
 
 # Sidebar for User Profile & Settings (Persistent)
 with st.sidebar:
@@ -135,20 +177,49 @@ with st.sidebar:
         "age": entered_age,
         "height": entered_height,
     }
-    try:
-      with open(user_profile_file, "w") as f:
-        json.dump(st.session_state.user_profile, f)
-    except:
-      pass
-    st.success("Profile saved! Refresh page to update title.")
+    save_profile_db(st.session_state.user_profile)
+    st.success("Profile saved and synced across devices!")
+
+  st.markdown("---")
+  st.markdown("### 💾 Data Export")
+  st.write(
+      "Download a fresh Excel file containing all your latest synced logs."
+  )
+
+  try:
+    conn_export = sqlite3.connect(DB_FILE)
+    df_exp_workouts = pd.read_sql_query("SELECT * FROM workouts", conn_export)
+    df_exp_bw = pd.read_sql_query("SELECT * FROM body_weight", conn_export)
+    df_exp_reviews = pd.read_sql_query("SELECT * FROM reviews", conn_export)
+    df_exp_profile = pd.read_sql_query("SELECT * FROM profile", conn_export)
+    conn_export.close()
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+      df_exp_workouts.to_excel(writer, sheet_name="Workout Log", index=False)
+      df_exp_bw.to_excel(writer, sheet_name="Body Weight Log", index=False)
+      df_exp_reviews.to_excel(writer, sheet_name="Reviews", index=False)
+      df_exp_profile.to_excel(writer, sheet_name="Profile", index=False)
+    excel_data = output.getvalue()
+
+    st.download_button(
+        label="📥 Download Excel Backup",
+        data=excel_data,
+        file_name="Workout_Master_Suite_Backup.xlsx",
+        mime=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+    )
+  except Exception as e:
+    st.error(f"Could not prepare Excel download: {e}")
 
 current_user = st.session_state.user_profile.get("name", "Modiri")
 
 st.title(f"💪 {current_user}'s Workout Master Suite")
 st.write(
     f"Elite training tracker for **{current_user}** (BW:"
-    f" {st.session_state.user_profile.get('body_weight')}kg) built with home"
-    " workouts, cardio tracking, weight tracking, & feedback logs."
+    f" {st.session_state.user_profile.get('body_weight')}kg) with cloud"
+    " multi-device sync & Excel backups."
 )
 
 # Navigation Tabs for enhanced structure
@@ -412,52 +483,57 @@ with tab1:
   with col_date:
     log_date = st.date_input("Workout Date", datetime.date.today())
 
-  if st.button("Save Structured Entry to Excel"):
+  if st.button("Save Structured Entry"):
     try:
-      wb = load_workbook(file_path)
-      if "Workout Log" in wb.sheetnames:
-        ws = wb["Workout Log"]
-        next_row = ws.max_row + 1
-
-        date_str = log_date.strftime("%Y/%m/%d")
-
-        ws.cell(row=next_row, column=1, value=date_str)
-        ws.cell(row=next_row, column=2, value=routine_name)
-        ws.cell(row=next_row, column=3, value=exercise_name)
-        ws.cell(row=next_row, column=4, value=total_sets)
-        ws.cell(row=next_row, column=5, value=representative_reps)
-        ws.cell(row=next_row, column=6, value=weight_str)
-        ws.cell(row=next_row, column=7, value=total_volume_str)
-        ws.cell(row=next_row, column=8, value=rpe)
-
-        wb.save(file_path)
-        st.success(
-            f"Successfully logged {exercise_name} ({weight_str}) under"
-            f" {routine_name}!"
-        )
-      else:
-        st.error("'Workout Log' sheet not found.")
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      date_str = log_date.strftime("%Y/%m/%d")
+      cursor.execute(
+          """
+                INSERT INTO workouts (date, routine, exercise, sets, reps, weight, total_volume, rpe)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+          (
+              date_str,
+              routine_name,
+              exercise_name,
+              total_sets,
+              representative_reps,
+              weight_str,
+              total_volume_str,
+              rpe,
+          ),
+      )
+      conn.commit()
+      conn.close()
+      st.success(
+          f"Successfully logged {exercise_name} ({weight_str}) under"
+          f" {routine_name}!"
+      )
     except Exception as e:
-      st.error(f"Error saving to Excel: {e}")
+      st.error(f"Error saving entry: {e}")
 
   st.markdown("---")
   st.subheader("📊 Live Workout Log Preview")
   try:
-    if os.path.exists(file_path):
-      df_log = pd.read_excel(file_path, sheet_name="Workout Log", skiprows=3)
-      if not df_log.empty:
-        st.dataframe(df_log.tail(6), use_container_width=True)
-      else:
-        st.info("No workout entries logged yet.")
+    conn = sqlite3.connect(DB_FILE)
+    df_log = pd.read_sql_query(
+        "SELECT date AS Date, routine AS 'Routine / Focus', exercise AS Exercise,"
+        " sets AS Sets, reps AS Reps, weight AS 'Weight (kg)', total_volume AS"
+        " 'Total Volume (kg)', rpe AS 'RPE (1-10)' FROM workouts ORDER BY id DESC",
+        conn,
+    )
+    conn.close()
+    if not df_log.empty:
+      st.dataframe(df_log.head(6), use_container_width=True)
+    else:
+      st.info("No workout entries logged yet.")
   except Exception as e:
     st.info(f"Could not load log preview: {e}")
 
 with tab2:
   st.subheader("⚖️ Body Weight Tracker")
-  st.write(
-      "Log your body weight regularly to track progress toward your 85 kg"
-      " target."
-  )
+  st.write("Log your body weight regularly to track progress toward your goals.")
 
   with st.form("body_weight_form"):
     c1, c2 = st.columns(2)
@@ -470,31 +546,33 @@ with tab2:
           step=0.1,
       )
     with c2:
-      logged_weight_date = st.date_input("Date", datetime.date.today())
+      logged_weight_date = st.date_input(
+          "Date", datetime.date.today(), key="bw_date"
+      )
 
     bw_notes = st.text_input(
-        "Notes (e.g., Morning weigh-in, post-run)", placeholder="Optional notes"
+        "Notes (e.g., Morning weigh-in, post-run)",
+        placeholder="Optional notes",
+        key="bw_notes",
     )
     submit_bw = st.form_submit_button("Save Body Weight Entry")
 
     if submit_bw:
       try:
-        if not os.path.exists(weight_file_path):
-          create_default_weight_workbook(weight_file_path)
-
-        wb_w = load_workbook(weight_file_path)
-        ws_w = wb_w.active
-        ws_w.append(
-            [
-                logged_weight_date.strftime("%Y/%m/%d"),
-                logged_bw,
-                bw_notes,
-            ]
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+                    INSERT INTO body_weight (date, body_weight, notes)
+                    VALUES (?, ?, ?)
+                """,
+            (logged_weight_date.strftime("%Y/%m/%d"), logged_bw, bw_notes),
         )
-        wb_w.save(weight_file_path)
+        conn.commit()
+        conn.close()
         st.success(
             f"Successfully recorded body weight: {logged_bw} kg saved to"
-            " Body_Weight_Log.xlsx!"
+            " database!"
         )
       except Exception as e:
         st.error(f"Error saving body weight: {e}")
@@ -502,72 +580,72 @@ with tab2:
   st.markdown("---")
   st.subheader("📈 Body Weight Trend")
   try:
-    if os.path.exists(weight_file_path):
-      df_bw = pd.read_excel(weight_file_path)
-      if not df_bw.empty:
-        st.dataframe(df_bw, use_container_width=True)
-
-        if "Body Weight (kg)" in df_bw.columns and "Date" in df_bw.columns:
-          chart_bw_data = df_bw[["Date", "Body Weight (kg)"]].dropna()
-          if not chart_bw_data.empty:
-            st.markdown("### Weight Progression Chart")
-            st.line_chart(
-                chart_bw_data.set_index("Date"), use_container_width=True
-            )
-      else:
-        st.info("No body weight entries logged yet.")
+    conn = sqlite3.connect(DB_FILE)
+    df_bw = pd.read_sql_query(
+        "SELECT date AS Date, body_weight AS 'Body Weight (kg)', notes AS Notes"
+        " FROM body_weight ORDER BY date ASC",
+        conn,
+    )
+    conn.close()
+    if not df_bw.empty:
+      st.dataframe(df_bw, use_container_width=True)
+      chart_bw_data = df_bw[["Date", "Body Weight (kg)"]].dropna()
+      if not chart_bw_data.empty:
+        st.markdown("### Weight Progression Chart")
+        st.line_chart(
+            chart_bw_data.set_index("Date"), use_container_width=True
+        )
     else:
-      st.info("No body weight log file found.")
+      st.info("No body weight entries logged yet.")
   except Exception as e:
     st.info(f"Could not load body weight chart: {e}")
 
 with tab3:
   st.subheader("📈 Training Analytics & Progress Charts")
   try:
-    if os.path.exists(file_path):
-      df_analytics = pd.read_excel(
-          file_path, sheet_name="Workout Log", skiprows=3
+    conn = sqlite3.connect(DB_FILE)
+    df_analytics = pd.read_sql_query(
+        "SELECT date AS Date, routine AS 'Routine / Focus', exercise AS Exercise,"
+        " sets AS Sets, reps AS Reps, weight AS 'Weight (kg)', total_volume AS"
+        " 'Total Volume (kg)', rpe AS 'RPE (1-10)' FROM workouts ORDER BY id ASC",
+        conn,
+    )
+    conn.close()
+
+    if not df_analytics.empty and "Total Volume (kg)" in df_analytics.columns:
+      df_analytics["Clean_Volume"] = (
+          df_analytics["Total Volume (kg)"]
+          .astype(str)
+          .str.replace("kg", "", regex=False)
+          .str.replace("HR: ", "", regex=False)
+          .str.replace("bpm", "", regex=False)
       )
-      if not df_analytics.empty and "Total Volume (kg)" in df_analytics.columns:
-        df_analytics["Clean_Volume"] = (
-            df_analytics["Total Volume (kg)"]
-            .astype(str)
-            .str.replace("kg", "", regex=False)
-            .str.replace("HR: ", "", regex=False)
-            .str.replace("bpm", "", regex=False)
-        )
-        df_analytics["Clean_Volume"] = pd.to_numeric(
-            df_analytics["Clean_Volume"], errors="coerce"
-        ).fillna(0)
+      df_analytics["Clean_Volume"] = pd.to_numeric(
+          df_analytics["Clean_Volume"], errors="coerce"
+      ).fillna(0)
 
-        st.markdown("### Total Lift Volume / Activity Output Over Time")
-        chart_data = df_analytics[["Date", "Clean_Volume"]].dropna()
-        if not chart_data.empty:
-          st.line_chart(
-              chart_data.set_index("Date"), use_container_width=True
-          )
-        else:
-          st.info("Log a few workouts to see your progression chart!")
-
-        st.markdown("---")
-        st.markdown("### Filter History by Routine / Focus")
-        df_analytics["Routine / Focus"] = df_analytics[
-            "Routine / Focus"
-        ].fillna("Unassigned")
-        unique_routines = sorted(
-            df_analytics["Routine / Focus"].unique().tolist()
-        )
-        selected_routine = st.selectbox(
-            "Select Routine to Inspect", unique_routines, key="analytics_routine"
-        )
-        filtered_df = df_analytics[
-            df_analytics["Routine / Focus"] == selected_routine
-        ]
-        st.dataframe(filtered_df, use_container_width=True)
+      st.markdown("### Total Lift Volume / Activity Output Over Time")
+      chart_data = df_analytics[["Date", "Clean_Volume"]].dropna()
+      if not chart_data.empty:
+        st.line_chart(chart_data.set_index("Date"), use_container_width=True)
       else:
-        st.info("Add entries to generate performance charts.")
+        st.info("Log a few workouts to see your progression chart!")
+
+      st.markdown("---")
+      st.markdown("### Filter History by Routine / Focus")
+      df_analytics["Routine / Focus"] = df_analytics[
+          "Routine / Focus"
+      ].fillna("Unassigned")
+      unique_routines = sorted(df_analytics["Routine / Focus"].unique().tolist())
+      selected_routine = st.selectbox(
+          "Select Routine to Inspect", unique_routines, key="analytics_routine"
+      )
+      filtered_df = df_analytics[
+          df_analytics["Routine / Focus"] == selected_routine
+      ]
+      st.dataframe(filtered_df, use_container_width=True)
     else:
-      st.info("Workout file not found.")
+      st.info("Add entries to generate performance charts.")
   except Exception as e:
     st.info(f"Error loading charts: {e}")
 
@@ -617,31 +695,29 @@ with tab5:
     if submit_fb:
       if fb_message.strip():
         try:
-          if not os.path.exists(reviews_file_path):
-            create_default_reviews_workbook(reviews_file_path)
-
-          wb_rev = load_workbook(reviews_file_path)
-          ws_rev = wb_rev.active
-
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
           now_dt = datetime.datetime.now()
           fb_date_str = now_dt.strftime("%Y/%m/%d")
           fb_time_str = now_dt.strftime("%H:%M:%S")
 
-          ws_rev.append(
-              [
+          cursor.execute(
+              """
+                    INSERT INTO reviews (date, time, tester_name, rating, category, message)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """,
+              (
                   fb_date_str,
                   fb_time_str,
                   fb_name,
                   fb_rating,
                   fb_category,
                   fb_message,
-              ]
+              ),
           )
-          wb_rev.save(reviews_file_path)
-          st.success(
-              "Thank you! Your feedback has been successfully saved to"
-              " Workout_Reviews.xlsx."
-          )
+          conn.commit()
+          conn.close()
+          st.success("Thank you! Your feedback has been successfully saved.")
         except Exception as e:
           st.error(f"Error saving feedback: {e}")
       else:
@@ -650,13 +726,17 @@ with tab5:
   st.markdown("---")
   st.subheader("📥 Received Feedback & Reviews")
   try:
-    if os.path.exists(reviews_file_path):
-      df_fb = pd.read_excel(reviews_file_path)
-      if not df_fb.empty:
-        st.dataframe(df_fb, use_container_width=True)
-      else:
-        st.info("No reviews submitted yet.")
+    conn = sqlite3.connect(DB_FILE)
+    df_fb = pd.read_sql_query(
+        "SELECT date AS Date, time AS Time, tester_name AS 'Tester Name',"
+        " rating AS 'Rating (1-5)', category AS Category, message AS 'Feedback"
+        " Message' FROM reviews ORDER BY id DESC",
+        conn,
+    )
+    conn.close()
+    if not df_fb.empty:
+      st.dataframe(df_fb, use_container_width=True)
     else:
-      st.info("No reviews file found.")
+      st.info("No reviews submitted yet.")
   except Exception as e:
     st.info(f"Could not load reviews: {e}")
