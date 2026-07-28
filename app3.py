@@ -17,8 +17,9 @@ except Exception:
   DB_MODE = "local"
 
 
+@st.cache_resource
 def get_db_connection():
-  """Returns a fresh, thread-safe database connection for each operation."""
+  """Returns a cached, thread-safe database connection for maximum speed."""
   if DB_MODE == "cloud":
     return libsql.connect(database=db_url, auth_token=auth_token)
   else:
@@ -117,15 +118,50 @@ def init_db():
     """)
 
   conn.commit()
-  conn.close()
 
 
 init_db()
 
 
+# --- CACHED DATA FETCHERS FOR SPEED ---
+@st.cache_data(ttl=300)
+def fetch_workouts(username):
+  conn = get_db_connection()
+  return pd.read_sql_query(
+      "SELECT id, date AS Date, routine AS 'Routine / Focus', exercise AS"
+      " Exercise, sets AS Sets, reps AS Reps, weight AS 'Weight (kg)',"
+      " total_volume AS 'Total Volume (kg)', rpe AS 'RPE (1-10)' FROM"
+      " workouts WHERE username = ? ORDER BY id DESC",
+      conn,
+      params=(username,),
+  )
+
+
+@st.cache_data(ttl=300)
+def fetch_cardio(username):
+  conn = get_db_connection()
+  return pd.read_sql_query(
+      "SELECT id, date AS Date, activity AS Activity, distance AS"
+      " 'Distance (km)', duration AS 'Duration (mins)', avg_hr AS 'Avg HR"
+      " (bpm)', pace AS Pace FROM cardio WHERE username = ? ORDER BY id DESC",
+      conn,
+      params=(username,),
+  )
+
+
+@st.cache_data(ttl=300)
+def fetch_body_weight(username):
+  conn = get_db_connection()
+  return pd.read_sql_query(
+      "SELECT id, date AS Date, body_weight AS 'Body Weight (kg)', notes AS"
+      " Notes FROM body_weight WHERE username = ? ORDER BY date ASC",
+      conn,
+      params=(username,),
+  )
+
+
 # --- HELPER FUNCTIONS ---
 def reset_database():
-  """Drops all tables and recreates them fresh from scratch."""
   conn = get_db_connection()
   cursor = conn.cursor()
   cursor.execute("DROP TABLE IF EXISTS workouts")
@@ -134,12 +170,11 @@ def reset_database():
   cursor.execute("DROP TABLE IF EXISTS body_weight")
   cursor.execute("DROP TABLE IF EXISTS profiles")
   conn.commit()
-  conn.close()
+  st.cache_data.clear()
   init_db()
 
 
 def delete_user_data(username_to_delete):
-  """Deletes all data and profile records for a specific user."""
   conn = get_db_connection()
   cursor = conn.cursor()
   cursor.execute("DELETE FROM workouts WHERE username = ?", (username_to_delete,))
@@ -150,7 +185,7 @@ def delete_user_data(username_to_delete):
   cursor.execute("DELETE FROM profiles WHERE username = ?", (username_to_delete,))
   cursor.execute("DELETE FROM reviews WHERE tester_name = ?", (username_to_delete,))
   conn.commit()
-  conn.close()
+  st.cache_data.clear()
 
 
 def load_profile(username):
@@ -182,8 +217,6 @@ def load_profile(username):
           "age": row[2],
           "height": row[3],
       }
-  finally:
-    conn.close()
   return {"body_weight": 75.0, "gender": "Male", "age": 25, "height": 175.0}
 
 
@@ -205,7 +238,7 @@ def save_profile_db(username, profile_data):
       ),
   )
   conn.commit()
-  conn.close()
+  st.cache_data.clear()
 
 
 # --- SESSION STATE INITIALIZATION & PROFILE PRE-LOADING ---
@@ -271,7 +304,6 @@ with st.sidebar:
 
           if row:
             stored_password = row[0]
-            conn.close()
             if stored_password == p_clean:
               st.session_state.username = u_clean
               st.session_state.logged_in = True
@@ -291,7 +323,7 @@ with st.sidebar:
                 (u_clean, p_clean),
             )
             conn.commit()
-            conn.close()
+            st.cache_data.clear()
 
             st.session_state.username = u_clean
             st.session_state.logged_in = True
@@ -358,7 +390,6 @@ with st.sidebar:
           conn,
           params=(st.session_state.username,),
       )
-      conn.close()
 
       output = io.BytesIO()
       with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -395,8 +426,18 @@ current_user = st.session_state.username
 st.title(f"💪 {current_user}'s Workout Master Suite")
 st.write(
     f"Private elite training tracker for **{current_user}** (BW:"
-    f" {st.session_state.body_weight}kg) with cloud multi-device sync."
+    f" {st.session_state.body_weight}kg) with high-speed cloud sync."
 )
+
+# --- MAIN SCREEN DATA POLICY & PRIVACY ---
+with st.expander("🛡️ Data Policy & Privacy Information", expanded=False):
+  st.markdown("""
+* **Private & Secure:** Your workout logs, body weight entries, and profile metrics are strictly isolated to your username and protected via secure authentication.
+* **Cloud Sync:** Data is securely synced to cloud databases for reliable multi-device access.
+* **Full Control:** You can export your raw data to Excel anytime or manage/wipe your account data securely via the admin tools.
+""")
+
+st.markdown("---")
 
 # --- NAVIGATION TABS ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
@@ -427,6 +468,9 @@ with tab1:
             "Cable Lateral Raises",
             "DB Lateral Raises",
             "Tricep Pushdowns",
+            "Pull Ups",
+            "Chin Ups",
+            "Dips",
         ],
         "Upper Body B": [
             "Lat Pulldown",
@@ -435,18 +479,43 @@ with tab1:
             "Barbell Bent-Over Row",
             "Face Pulls",
             "Rear Delt Fly",
+            "Dumbbell Curls",
+            "Barbell Curls",
+            "Hammer Curls",
+            "Skull Crushers",
         ],
         "Lower Body A": [
             "Barbell Back Squat",
-            "Leg Press",
+            "Seated Leg Press",
+            "Leg Extensions",
+            "Machine Leg Curl",
             "Romanian Deadlift",
             "Standing Calf Raises",
+            "Seated Calf Raises",
         ],
         "Lower Body B": [
             "Bulgarian Split Squat",
             "Goblet Squat",
+            "Seated Leg Press",
+            "Leg Extensions",
+            "Machine Leg Curl",
             "Romanian Deadlift",
-            "Leg Press",
+            "Standing Calf Raises",
+        ],
+        "Core & Abs": [
+            "Abdominal Crunch Machines",
+            "Cable Crunches",
+            "Hanging Leg Raises",
+            "Plank Hold",
+            "Russian Twists",
+            "Decline Sit-Ups",
+        ],
+        "Cardio Equipment": [
+            "Keiser Bicycle",
+            "Arc Trainer",
+            "Treadmill Run",
+            "Assault Bike",
+            "Rowing Machine",
         ],
         "Home Workouts": [
             "Standard Push-Ups",
@@ -463,6 +532,8 @@ with tab1:
             "Barbell Back Squat",
             "Barbell Bench Press",
             "Lat Pulldown",
+            "Seated Leg Press",
+            "Leg Extensions",
             "Standing Calf Raises",
         ],
     }
@@ -514,6 +585,10 @@ with tab1:
 
     st.markdown("---")
     st.write("🏋️ **Set & Weight Progression (Pyramids / Weight Changes)**")
+    st.info(
+        "💡 **Pro Tip:** Remember to take at least **2 minutes of rest** between"
+        " working sets for optimal ATP recovery and muscle growth!"
+    )
 
     num_blocks = st.selectbox(
         "How many different weight blocks?", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], index=0
@@ -608,7 +683,7 @@ with tab1:
             ),
         )
         conn.commit()
-        conn.close()
+        st.cache_data.clear()
 
         st.success(
             f"Successfully logged {exercise_name} ({weight_str}) under"
@@ -623,6 +698,8 @@ with tab1:
     cardio_activity_options = [
         "Outside Running",
         "Indoor Treadmill Run",
+        "Keiser Bicycle",
+        "Arc Trainer",
         "Assault Bike",
         "Rowing Machine",
         "Other",
@@ -689,7 +766,7 @@ with tab1:
             ),
         )
         conn.commit()
-        conn.close()
+        st.cache_data.clear()
 
         st.success(
             f"Successfully logged {cardio_activity_name} for"
@@ -707,143 +784,117 @@ with tab1:
   )
 
   with sub_tab_prev1:
-    try:
-      conn = get_db_connection()
-      df_log = pd.read_sql_query(
-          "SELECT id, date AS Date, routine AS 'Routine / Focus', exercise AS"
-          " Exercise, sets AS Sets, reps AS Reps, weight AS 'Weight (kg)',"
-          " total_volume AS 'Total Volume (kg)', rpe AS 'RPE (1-10)' FROM"
-          " workouts WHERE username = ? ORDER BY id DESC",
-          conn,
-          params=(st.session_state.username,),
-      )
-      conn.close()
+    df_log = fetch_workouts(st.session_state.username)
+    if not df_log.empty:
+      st.dataframe(df_log.drop(columns=["id"]).head(50), use_container_width=True)
 
-      if not df_log.empty:
-        st.dataframe(df_log.drop(columns=["id"]).head(10), use_container_width=True)
-
-        with st.expander("🗑️ Manage & Delete Workout Entries", expanded=False):
-          st.write("Select specific workout entry IDs to delete.")
-          workout_options = dict(
-              zip(
-                  df_log["id"],
-                  df_log["Date"]
-                  + " | "
-                  + df_log["Routine / Focus"]
-                  + " | "
-                  + df_log["Exercise"]
-                  + " ("
-                  + df_log["Weight (kg)"]
-                  + ")",
-              )
-          )
-          selected_to_delete = st.multiselect(
-              "Choose workout entries to remove",
-              options=list(workout_options.keys()),
-              format_func=lambda x: workout_options[x],
-              key="del_workouts_multi",
-          )
-
-          if st.button("Delete Selected Workout Entries", type="primary"):
-            if selected_to_delete:
-              try:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.executemany(
-                    "DELETE FROM workouts WHERE id = ? AND username = ?",
-                    [
-                        (wid, st.session_state.username)
-                        for wid in selected_to_delete
-                    ],
-                )
-                conn.commit()
-                conn.close()
-
-                st.success(
-                    f"Successfully deleted {len(selected_to_delete)} workout"
-                    " entry/entries!"
-                )
-                st.rerun()
-              except Exception as e:
-                st.error(f"Error deleting entries: {e}")
-            else:
-              st.warning("Please select at least one entry to delete.")
-      else:
-        st.info(
-            f"No strength workout entries logged for {st.session_state.username}"
-            " yet."
+      with st.expander("🗑️ Manage & Delete Workout Entries", expanded=False):
+        st.write("Select specific workout entry IDs to delete.")
+        workout_options = dict(
+            zip(
+                df_log["id"],
+                df_log["Date"]
+                + " | "
+                + df_log["Routine / Focus"]
+                + " | "
+                + df_log["Exercise"]
+                + " ("
+                + df_log["Weight (kg)"]
+                + ")",
+            )
         )
-    except Exception as e:
-      st.info(f"Could not load workout log preview: {e}")
+        selected_to_delete = st.multiselect(
+            "Choose workout entries to remove",
+            options=list(workout_options.keys()),
+            format_func=lambda x: workout_options[x],
+            key="del_workouts_multi",
+        )
+
+        if st.button("Delete Selected Workout Entries", type="primary"):
+          if selected_to_delete:
+            try:
+              conn = get_db_connection()
+              cursor = conn.cursor()
+              cursor.executemany(
+                  "DELETE FROM workouts WHERE id = ? AND username = ?",
+                  [
+                      (wid, st.session_state.username)
+                      for wid in selected_to_delete
+                  ],
+              )
+              conn.commit()
+              st.cache_data.clear()
+
+              st.success(
+                  f"Successfully deleted {len(selected_to_delete)} workout"
+                  " entry/entries!"
+              )
+              st.rerun()
+            except Exception as e:
+              st.error(f"Error deleting entries: {e}")
+          else:
+            st.warning("Please select at least one entry to delete.")
+    else:
+      st.info(
+          f"No strength workout entries logged for {st.session_state.username}"
+          " yet."
+      )
 
   with sub_tab_prev2:
-    try:
-      conn = get_db_connection()
-      df_cardio_log = pd.read_sql_query(
-          "SELECT id, date AS Date, activity AS Activity, distance AS"
-          " 'Distance (km)', duration AS 'Duration (mins)', avg_hr AS 'Avg HR"
-          " (bpm)', pace AS Pace FROM cardio WHERE username = ? ORDER BY id"
-          " DESC",
-          conn,
-          params=(st.session_state.username,),
+    df_cardio_log = fetch_cardio(st.session_state.username)
+    if not df_cardio_log.empty:
+      st.dataframe(
+          df_cardio_log.drop(columns=["id"]).head(50), use_container_width=True
       )
-      conn.close()
 
-      if not df_cardio_log.empty:
-        st.dataframe(
-            df_cardio_log.drop(columns=["id"]).head(10), use_container_width=True
+      with st.expander("🗑️ Manage & Delete Cardio Entries", expanded=False):
+        st.write("Select specific cardio entry IDs to delete.")
+        cardio_options = dict(
+            zip(
+                df_cardio_log["id"],
+                df_cardio_log["Date"]
+                + " | "
+                + df_cardio_log["Activity"]
+                + " ("
+                + df_cardio_log["Distance (km)"].astype(str)
+                + "km, "
+                + df_cardio_log["Duration (mins)"].astype(str)
+                + "m)",
+            )
+        )
+        selected_cardio_to_delete = st.multiselect(
+            "Choose cardio entries to remove",
+            options=list(cardio_options.keys()),
+            format_func=lambda x: cardio_options[x],
+            key="del_cardio_multi",
         )
 
-        with st.expander("🗑️ Manage & Delete Cardio Entries", expanded=False):
-          st.write("Select specific cardio entry IDs to delete.")
-          cardio_options = dict(
-              zip(
-                  df_cardio_log["id"],
-                  df_cardio_log["Date"]
-                  + " | "
-                  + df_cardio_log["Activity"]
-                  + " ("
-                  + df_cardio_log["Distance (km)"].astype(str)
-                  + "km, "
-                  + df_cardio_log["Duration (mins)"].astype(str)
-                  + "m)",
+        if st.button("Delete Selected Cardio Entries", type="primary"):
+          if selected_cardio_to_delete:
+            try:
+              conn = get_db_connection()
+              cursor = conn.cursor()
+              cursor.executemany(
+                  "DELETE FROM cardio WHERE id = ? AND username = ?",
+                  [
+                      (cid, st.session_state.username)
+                      for cid in selected_cardio_to_delete
+                  ],
               )
-          )
-          selected_cardio_to_delete = st.multiselect(
-              "Choose cardio entries to remove",
-              options=list(cardio_options.keys()),
-              format_func=lambda x: cardio_options[x],
-              key="del_cardio_multi",
-          )
+              conn.commit()
+              st.cache_data.clear()
 
-          if st.button("Delete Selected Cardio Entries", type="primary"):
-            if selected_cardio_to_delete:
-              try:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.executemany(
-                    "DELETE FROM cardio WHERE id = ? AND username = ?",
-                    [
-                        (cid, st.session_state.username)
-                        for cid in selected_cardio_to_delete
-                    ],
-                )
-                conn.commit()
-                conn.close()
-
-                st.success(
-                    f"Successfully deleted {len(selected_cardio_to_delete)}"
-                    " cardio entry/entries!"
-                )
-                st.rerun()
-              except Exception as e:
-                st.error(f"Error deleting cardio entries: {e}")
-            else:
-              st.warning("Please select at least one entry to delete.")
-      else:
-        st.info(f"No cardio entries logged for {st.session_state.username} yet.")
-    except Exception as e:
-      st.info(f"Could not load cardio log preview: {e}")
+              st.success(
+                  f"Successfully deleted {len(selected_cardio_to_delete)}"
+                  " cardio entry/entries!"
+              )
+              st.rerun()
+            except Exception as e:
+              st.error(f"Error deleting cardio entries: {e}")
+          else:
+            st.warning("Please select at least one entry to delete.")
+    else:
+      st.info(f"No cardio entries logged for {st.session_state.username} yet.")
 
 with tab2:
   st.subheader(f"⚖️ Body Weight Tracker ({st.session_state.username})")
@@ -888,7 +939,7 @@ with tab2:
             ),
         )
         conn.commit()
-        conn.close()
+        st.cache_data.clear()
 
         st.success(
             f"Successfully recorded body weight: {logged_bw} kg saved for"
@@ -899,81 +950,62 @@ with tab2:
 
   st.markdown("---")
   st.subheader("📈 Body Weight Trend & Management")
-  try:
-    conn = get_db_connection()
-    df_bw = pd.read_sql_query(
-        "SELECT id, date AS Date, body_weight AS 'Body Weight (kg)', notes AS"
-        " Notes FROM body_weight WHERE username = ? ORDER BY date ASC",
-        conn,
-        params=(st.session_state.username,),
-    )
-    conn.close()
+  df_bw = fetch_body_weight(st.session_state.username)
+  if not df_bw.empty:
+    st.dataframe(df_bw.drop(columns=["id"]), use_container_width=True)
+    chart_bw_data = df_bw[["Date", "Body Weight (kg)"]].dropna()
+    if not chart_bw_data.empty:
+      st.markdown("### Weight Progression Chart")
+      st.line_chart(chart_bw_data.set_index("Date"), use_container_width=True)
 
-    if not df_bw.empty:
-      st.dataframe(df_bw.drop(columns=["id"]), use_container_width=True)
-      chart_bw_data = df_bw[["Date", "Body Weight (kg)"]].dropna()
-      if not chart_bw_data.empty:
-        st.markdown("### Weight Progression Chart")
-        st.line_chart(
-            chart_bw_data.set_index("Date"), use_container_width=True
-        )
-
-      with st.expander(
-          "🗑️ Manage & Delete Body Weight Entries", expanded=False
-      ):
-        st.write("Select specific body weight entry IDs to delete.")
-        bw_options = dict(
-            zip(
-                df_bw["id"],
-                df_bw["Date"]
-                + " - "
-                + df_bw["Body Weight (kg)"].astype(str)
-                + "kg ("
-                + df_bw["Notes"].fillna("No notes")
-                + ")",
-            )
-        )
-        selected_bw_to_delete = st.multiselect(
-            "Choose body weight entries to remove",
-            options=list(bw_options.keys()),
-            format_func=lambda x: bw_options[x],
-            key="del_bw_multiselect",
-        )
-
-        if st.button(
-            "Delete Selected Body Weight Entries",
-            type="primary",
-            key="btn_del_bw",
-        ):
-          if selected_bw_to_delete:
-            try:
-              conn = get_db_connection()
-              cursor = conn.cursor()
-              cursor.executemany(
-                  "DELETE FROM body_weight WHERE id = ? AND username = ?",
-                  [
-                      (wid, st.session_state.username)
-                      for wid in selected_bw_to_delete
-                  ],
-              )
-              conn.commit()
-              conn.close()
-
-              st.success(
-                  f"Successfully deleted {len(selected_bw_to_delete)} body weight"
-                  " entry/entries!"
-              )
-              st.rerun()
-            except Exception as e:
-              st.error(f"Error deleting body weight entries: {e}")
-          else:
-            st.warning("Please select at least one entry to delete.")
-    else:
-      st.info(
-          f"No body weight entries logged for {st.session_state.username} yet."
+    with st.expander("🗑️ Manage & Delete Body Weight Entries", expanded=False):
+      st.write("Select specific body weight entry IDs to delete.")
+      bw_options = dict(
+          zip(
+              df_bw["id"],
+              df_bw["Date"]
+              + " - "
+              + df_bw["Body Weight (kg)"].astype(str)
+              + "kg ("
+              + df_bw["Notes"].fillna("No notes")
+              + ")",
+          )
       )
-  except Exception as e:
-    st.info(f"Could not load body weight chart: {e}")
+      selected_bw_to_delete = st.multiselect(
+          "Choose body weight entries to remove",
+          options=list(bw_options.keys()),
+          format_func=lambda x: bw_options[x],
+          key="del_bw_multiselect",
+      )
+
+      if st.button(
+          "Delete Selected Body Weight Entries", type="primary", key="btn_del_bw"
+      ):
+        if selected_bw_to_delete:
+          try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.executemany(
+                "DELETE FROM body_weight WHERE id = ? AND username = ?",
+                [
+                    (wid, st.session_state.username)
+                    for wid in selected_bw_to_delete
+                ],
+            )
+            conn.commit()
+            st.cache_data.clear()
+
+            st.success(
+                f"Successfully deleted {len(selected_bw_to_delete)} body weight"
+                " entry/entries!"
+            )
+            st.rerun()
+          except Exception as e:
+            st.error(f"Error deleting body weight entries: {e}")
+        else:
+          st.warning("Please select at least one entry to delete.")
+  else:
+    st.info(f"No body weight entries logged for {st.session_state.username} yet.")
 
 with tab3:
   st.subheader(f"📈 Training Analytics ({st.session_state.username})")
@@ -983,83 +1015,55 @@ with tab3:
   )
 
   with an_tab1:
-    try:
-      conn = get_db_connection()
-      df_analytics = pd.read_sql_query(
-          "SELECT date AS Date, routine AS 'Routine / Focus', exercise AS"
-          " Exercise, sets AS Sets, reps AS Reps, weight AS 'Weight (kg)',"
-          " total_volume AS 'Total Volume (kg)', rpe AS 'RPE (1-10)' FROM"
-          " workouts WHERE username = ? ORDER BY id ASC",
-          conn,
-          params=(st.session_state.username,),
+    df_analytics = fetch_workouts(st.session_state.username)
+    if not df_analytics.empty and "Total Volume (kg)" in df_analytics.columns:
+      df_analytics["Clean_Volume"] = (
+          df_analytics["Total Volume (kg)"]
+          .astype(str)
+          .str.replace("kg", "", regex=False)
       )
-      conn.close()
+      df_analytics["Clean_Volume"] = pd.to_numeric(
+          df_analytics["Clean_Volume"], errors="coerce"
+      ).fillna(0)
 
-      if not df_analytics.empty and "Total Volume (kg)" in df_analytics.columns:
-        df_analytics["Clean_Volume"] = (
-            df_analytics["Total Volume (kg)"]
-            .astype(str)
-            .str.replace("kg", "", regex=False)
-        )
-        df_analytics["Clean_Volume"] = pd.to_numeric(
-            df_analytics["Clean_Volume"], errors="coerce"
-        ).fillna(0)
-
-        st.markdown("### Total Lift Volume Over Time")
-        chart_data = df_analytics[["Date", "Clean_Volume"]].dropna()
-        if not chart_data.empty:
-          st.line_chart(chart_data.set_index("Date"), use_container_width=True)
-        else:
-          st.info("Log a few workouts to see your progression chart!")
-
-        st.markdown("---")
-        st.markdown("### Filter History by Routine / Focus")
-        df_analytics["Routine / Focus"] = df_analytics[
-            "Routine / Focus"
-        ].fillna("Unassigned")
-        unique_routines = sorted(
-            df_analytics["Routine / Focus"].unique().tolist()
-        )
-        selected_routine = st.selectbox(
-            "Select Routine to Inspect", unique_routines, key="analytics_routine"
-        )
-        filtered_df = df_analytics[
-            df_analytics["Routine / Focus"] == selected_routine
-        ]
-        st.dataframe(filtered_df, use_container_width=True)
+      st.markdown("### Total Lift Volume Over Time")
+      chart_data = df_analytics[["Date", "Clean_Volume"]].dropna()
+      if not chart_data.empty:
+        st.line_chart(chart_data.set_index("Date"), use_container_width=True)
       else:
-        st.info("Add strength workout entries to generate performance charts.")
-    except Exception as e:
-      st.info(f"Error loading strength charts: {e}")
+        st.info("Log a few workouts to see your progression chart!")
+
+      st.markdown("---")
+      st.markdown("### Filter History by Routine / Focus")
+      df_analytics["Routine / Focus"] = df_analytics[
+          "Routine / Focus"
+      ].fillna("Unassigned")
+      unique_routines = sorted(df_analytics["Routine / Focus"].unique().tolist())
+      selected_routine = st.selectbox(
+          "Select Routine to Inspect", unique_routines, key="analytics_routine"
+      )
+      filtered_df = df_analytics[
+          df_analytics["Routine / Focus"] == selected_routine
+      ]
+      st.dataframe(filtered_df.head(100), use_container_width=True)
+    else:
+      st.info("Add strength workout entries to generate performance charts.")
 
   with an_tab2:
-    try:
-      conn = get_db_connection()
-      df_cardio_an = pd.read_sql_query(
-          "SELECT date AS Date, activity AS Activity, distance AS"
-          " 'Distance (km)', duration AS 'Duration (mins)', avg_hr AS 'Avg HR"
-          " (bpm)', pace AS Pace FROM cardio WHERE username = ? ORDER BY id"
-          " ASC",
-          conn,
-          params=(st.session_state.username,),
-      )
-      conn.close()
+    df_cardio_an = fetch_cardio(st.session_state.username)
+    if not df_cardio_an.empty:
+      st.markdown("### Cardio Distance Over Time")
+      cardio_chart_data = df_cardio_an[["Date", "Distance (km)"]].dropna()
+      if not cardio_chart_data.empty:
+        st.line_chart(
+            cardio_chart_data.set_index("Date"), use_container_width=True
+        )
 
-      if not df_cardio_an.empty:
-        st.markdown("### Cardio Distance Over Time")
-        cardio_chart_data = df_cardio_an[["Date", "Distance (km)"]].dropna()
-        if not cardio_chart_data.empty:
-          st.line_chart(
-              cardio_chart_data.set_index("Date"), use_container_width=True
-          )
-
-        st.markdown("---")
-        st.markdown("### Cardio Logs History")
-        st.dataframe(df_cardio_an, use_container_width=True)
-      else:
-        st.info("Log cardio sessions to view performance analytics!")
-    except Exception as e:
-      st.info(f"Error loading cardio charts: {e}")
+      st.markdown("---")
+      st.markdown("### Cardio Logs History")
+      st.dataframe(df_cardio_an.head(100), use_container_width=True)
+    else:
+      st.info("Log cardio sessions to view performance analytics!")
 
 with tab4:
   st.subheader("📖 Glossary & Definitions")
@@ -1117,7 +1121,7 @@ with tab5:
             ),
         )
         conn.commit()
-        conn.close()
+        st.cache_data.clear()
 
         st.success("Thank you! Your feedback has been successfully submitted.")
       except Exception as e:
@@ -1145,7 +1149,6 @@ with tab5:
     try:
       conn = get_db_connection()
       df_users = pd.read_sql_query("SELECT username FROM profiles", conn)
-      conn.close()
 
       if not df_users.empty:
         user_list = df_users["username"].tolist()
@@ -1212,10 +1215,9 @@ with tab5:
           " reviews ORDER BY id DESC",
           conn,
       )
-      conn.close()
 
       if not df_reviews.empty:
-        st.dataframe(df_reviews, use_container_width=True)
+        st.dataframe(df_reviews.head(50), use_container_width=True)
       else:
         st.info("No reviews submitted yet.")
     except Exception as e:
