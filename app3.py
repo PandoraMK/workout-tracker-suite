@@ -5,26 +5,29 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 
-# --- DATABASE CONNECTION SETUP (Cloud Turso & Local SQLite Fallback) ---
+# --- DATABASE CONFIGURATION ---
 try:
   import libsql
 
   db_url = st.secrets["TURSO_DATABASE_URL"]
   auth_token = st.secrets["TURSO_AUTH_TOKEN"]
-  conn = libsql.connect(database=db_url, auth_token=auth_token)
   DB_MODE = "cloud"
 except Exception:
   DB_FILE = "workout_master.db"
-  conn = sqlite3.connect(DB_FILE, check_same_thread=False)
   DB_MODE = "local"
 
 
-def init_db():
+def get_db_connection():
+  """Returns a fresh, thread-safe database connection for each operation."""
   if DB_MODE == "cloud":
-    cursor = conn.cursor()
+    return libsql.connect(database=db_url, auth_token=auth_token)
   else:
-    local_conn = sqlite3.connect(DB_FILE)
-    cursor = local_conn.cursor()
+    return sqlite3.connect(DB_FILE, check_same_thread=False)
+
+
+def init_db():
+  conn = get_db_connection()
+  cursor = conn.cursor()
 
   # 1. Workouts Table with username isolation
   cursor.execute("""
@@ -113,27 +116,19 @@ def init_db():
         VALUES ('Modiri', '2026', 88.0, 'Male', 25, 178.0)
     """)
 
-  if DB_MODE == "cloud":
-    conn.commit()
-  else:
-    local_conn.commit()
-    local_conn.close()
+  conn.commit()
+  conn.close()
 
 
 init_db()
 
-# --- SESSION STATE INITIALIZATION ---
-if "username" not in st.session_state:
-  st.session_state.username = "Modiri"
-if "logged_in" not in st.session_state:
-  st.session_state.logged_in = True
 
-
+# --- HELPER FUNCTIONS ---
 def load_profile(username):
-  if DB_MODE == "cloud":
+  conn = get_db_connection()
+  try:
     df = pd.read_sql_query(
-        "SELECT body_weight, gender, age, height FROM profiles WHERE username ="
-        " ?",
+        "SELECT body_weight, gender, age, height FROM profiles WHERE username = ?",
         conn,
         params=(username,),
     )
@@ -144,16 +139,13 @@ def load_profile(username):
           "age": int(df["age"].iloc[0]),
           "height": float(df["height"].iloc[0]),
       }
-  else:
-    local_conn = sqlite3.connect(DB_FILE)
-    cursor = local_conn.cursor()
+  except Exception:
+    cursor = conn.cursor()
     cursor.execute(
-        "SELECT body_weight, gender, age, height FROM profiles WHERE username ="
-        " ?",
+        "SELECT body_weight, gender, age, height FROM profiles WHERE username = ?",
         (username,),
     )
     row = cursor.fetchone()
-    local_conn.close()
     if row:
       return {
           "body_weight": row[0],
@@ -161,123 +153,108 @@ def load_profile(username):
           "age": row[2],
           "height": row[3],
       }
+  finally:
+    conn.close()
   return {"body_weight": 75.0, "gender": "Male", "age": 25, "height": 175.0}
 
 
 def save_profile_db(username, profile_data):
-  if DB_MODE == "cloud":
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-            UPDATE profiles 
-            SET body_weight = ?, gender = ?, age = ?, height = ?
-            WHERE username = ?
-        """,
-        (
-            profile_data["body_weight"],
-            profile_data["gender"],
-            profile_data["age"],
-            profile_data["height"],
-            username,
-        ),
-    )
-    conn.commit()
-  else:
-    local_conn = sqlite3.connect(DB_FILE)
-    cursor = local_conn.cursor()
-    cursor.execute(
-        """
-            UPDATE profiles 
-            SET body_weight = ?, gender = ?, age = ?, height = ?
-            WHERE username = ?
-        """,
-        (
-            profile_data["body_weight"],
-            profile_data["gender"],
-            profile_data["age"],
-            profile_data["height"],
-            username,
-        ),
-    )
-    local_conn.commit()
-    local_conn.close()
+  conn = get_db_connection()
+  cursor = conn.cursor()
+  cursor.execute(
+      """
+        UPDATE profiles 
+        SET body_weight = ?, gender = ?, age = ?, height = ?
+        WHERE username = ?
+    """,
+      (
+          profile_data["body_weight"],
+          profile_data["gender"],
+          profile_data["age"],
+          profile_data["height"],
+          username,
+      ),
+  )
+  conn.commit()
+  conn.close()
 
 
-# Load active user profile into session state
-if (
-    "current_loaded_user" not in st.session_state
-    or st.session_state.current_loaded_user != st.session_state.username
-):
-  p_data = load_profile(st.session_state.username)
-  st.session_state.body_weight = p_data.get("body_weight", 75.0)
-  st.session_state.gender = p_data.get("gender", "Male")
-  st.session_state.age = p_data.get("age", 25)
-  st.session_state.height = p_data.get("height", 175.0)
-  st.session_state.current_loaded_user = st.session_state.username
+# --- SESSION STATE INITIALIZATION & PROFILE PRE-LOADING ---
+if "username" not in st.session_state:
+  st.session_state.username = None
+if "logged_in" not in st.session_state:
+  st.session_state.logged_in = False
 
-current_user = st.session_state.username
+# Pre-load profile into session state BEFORE widgets are instantiated
+if st.session_state.logged_in and st.session_state.username:
+  if (
+      "current_loaded_user" not in st.session_state
+      or st.session_state.current_loaded_user != st.session_state.username
+  ):
+    p_data = load_profile(st.session_state.username)
+    st.session_state.body_weight = p_data.get("body_weight", 75.0)
+    st.session_state.gender = p_data.get("gender", "Male")
+    st.session_state.age = p_data.get("age", 25)
+    st.session_state.height = p_data.get("height", 175.0)
+    st.session_state.current_loaded_user = st.session_state.username
+else:
+  if "body_weight" not in st.session_state:
+    st.session_state.body_weight = 75.0
+  if "gender" not in st.session_state:
+    st.session_state.gender = "Male"
+  if "age" not in st.session_state:
+    st.session_state.age = 25
+  if "height" not in st.session_state:
+    st.session_state.height = 175.0
 
 st.set_page_config(
-    page_title=f"{current_user}'s Workout Master Suite",
-    page_icon="💪",
-    layout="centered",
+    page_title="Workout Master Suite", page_icon="💪", layout="centered"
 )
 
 # --- SIDEBAR FOR UNIQUE USER LOGIN & PROFILE SETTINGS ---
 with st.sidebar:
   st.markdown("### 🔐 Secure User Login / Register")
-  st.caption(
-      "Usernames are unique. If a username already exists, you must provide"
-      " the correct password to log in. New usernames are automatically"
-      " registered."
-  )
 
-  input_username = st.text_input("Username", key="username_input")
-  input_password = st.text_input(
-      "Password / PIN", type="password", key="password_input"
-  )
+  if not st.session_state.logged_in:
+    st.caption(
+        "Please log in or register to access your personal training dashboard."
+    )
+    input_username = st.text_input("Username", key="username_input")
+    input_password = st.text_input(
+        "Password / PIN", type="password", key="password_input"
+    )
 
-  if st.button("Login / Register Account"):
-    u_clean = input_username.strip()
-    p_clean = input_password.strip()
+    if st.button("Login / Register Account"):
+      u_clean = input_username.strip()
+      p_clean = input_password.strip()
 
-    if not u_clean:
-      st.warning("Please enter a valid username.")
-    elif not p_clean:
-      st.warning("Please enter a password.")
-    else:
-      try:
-        if DB_MODE == "cloud":
+      if not u_clean:
+        st.warning("Please enter a valid username.")
+      elif not p_clean:
+        st.warning("Please enter a password.")
+      else:
+        try:
+          conn = get_db_connection()
           cursor = conn.cursor()
           cursor.execute(
               "SELECT password FROM profiles WHERE username = ?", (u_clean,)
           )
           row = cursor.fetchone()
-        else:
-          local_conn = sqlite3.connect(DB_FILE)
-          cursor = local_conn.cursor()
-          cursor.execute(
-              "SELECT password FROM profiles WHERE username = ?", (u_clean,)
-          )
-          row = cursor.fetchone()
-          local_conn.close()
 
-        if row:
-          stored_password = row[0]
-          if stored_password == p_clean:
-            st.session_state.username = u_clean
-            st.session_state.logged_in = True
-            st.success(f"Welcome back, {u_clean}!")
-            st.rerun()
+          if row:
+            stored_password = row[0]
+            conn.close()
+            if stored_password == p_clean:
+              st.session_state.username = u_clean
+              st.session_state.logged_in = True
+              st.success(f"Welcome back, {u_clean}!")
+              st.rerun()
+            else:
+              st.error(
+                  "Incorrect password! This username is already taken by"
+                  " someone else."
+              )
           else:
-            st.error(
-                "Incorrect password! This username is already taken by"
-                " someone else."
-            )
-        else:
-          # Register new unique user
-          if DB_MODE == "cloud":
-            cursor = conn.cursor()
             cursor.execute(
                 """
                             INSERT INTO profiles (username, password, body_weight, gender, age, height)
@@ -286,122 +263,104 @@ with st.sidebar:
                 (u_clean, p_clean),
             )
             conn.commit()
-          else:
-            local_conn = sqlite3.connect(DB_FILE)
-            cursor = local_conn.cursor()
-            cursor.execute(
-                """
-                            INSERT INTO profiles (username, password, body_weight, gender, age, height)
-                            VALUES (?, ?, 75.0, 'Male', 25, 175.0)
-                        """,
-                (u_clean, p_clean),
-            )
-            local_conn.commit()
-            local_conn.close()
+            conn.close()
 
-          st.session_state.username = u_clean
-          st.session_state.logged_in = True
-          st.success(f"New account created and logged in as {u_clean}!")
-          st.rerun()
-      except Exception as e:
-        st.error(f"Authentication error: {e}")
+            st.session_state.username = u_clean
+            st.session_state.logged_in = True
+            st.success(f"New account created and logged in as {u_clean}!")
+            st.rerun()
+        except Exception as e:
+          st.error(f"Authentication error: {e}")
+  else:
+    st.success(f"Logged in as: **{st.session_state.username}**")
+    if st.button("Log Out"):
+      st.session_state.logged_in = False
+      st.session_state.username = None
+      st.session_state.pop("current_loaded_user", None)
+      st.rerun()
 
-  st.markdown(f"**Active User:** `{st.session_state.username}`")
-  st.markdown("---")
-
-  st.markdown("### ⚙️ Athlete Profile")
-  st.number_input(
-      "Body Weight (kg)",
-      min_value=30.0,
-      max_value=250.0,
-      step=0.5,
-      key="body_weight",
-  )
-  st.selectbox("Gender", ["Male", "Female", "Other"], key="gender")
-  st.number_input("Age", min_value=10, max_value=100, key="age")
-  st.number_input(
-      "Height (cm)", min_value=100.0, max_value=250.0, step=1.0, key="height"
-  )
-
-  if st.button("Save Profile"):
-    updated_profile = {
-        "body_weight": st.session_state.body_weight,
-        "gender": st.session_state.gender,
-        "age": st.session_state.age,
-        "height": st.session_state.height,
-    }
-    save_profile_db(st.session_state.username, updated_profile)
-    st.success("Profile saved and synced securely!")
-
-  st.markdown("---")
-  st.markdown("### 💾 Personal Data Export")
-
-  try:
-    if DB_MODE == "cloud":
-      df_exp_workouts = pd.read_sql_query(
-          "SELECT * FROM workouts WHERE username = ?",
-          conn,
-          params=(st.session_state.username,),
-      )
-      df_exp_cardio = pd.read_sql_query(
-          "SELECT * FROM cardio WHERE username = ?",
-          conn,
-          params=(st.session_state.username,),
-      )
-      df_exp_bw = pd.read_sql_query(
-          "SELECT * FROM body_weight WHERE username = ?",
-          conn,
-          params=(st.session_state.username,),
-      )
-      df_exp_profile = pd.read_sql_query(
-          "SELECT username, body_weight, gender, age, height FROM profiles"
-          " WHERE username = ?",
-          conn,
-          params=(st.session_state.username,),
-      )
-    else:
-      conn_export = sqlite3.connect(DB_FILE)
-      df_exp_workouts = pd.read_sql_query(
-          "SELECT * FROM workouts WHERE username = ?",
-          conn_export,
-          params=(st.session_state.username,),
-      )
-      df_exp_cardio = pd.read_sql_query(
-          "SELECT * FROM cardio WHERE username = ?",
-          conn_export,
-          params=(st.session_state.username,),
-      )
-      df_exp_bw = pd.read_sql_query(
-          "SELECT * FROM body_weight WHERE username = ?",
-          conn_export,
-          params=(st.session_state.username,),
-      )
-      df_exp_profile = pd.read_sql_query(
-          "SELECT username, body_weight, gender, age, height FROM profiles"
-          " WHERE username = ?",
-          conn_export,
-          params=(st.session_state.username,),
-      )
-      conn_export.close()
-
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-      df_exp_workouts.to_excel(writer, sheet_name="Workout Log", index=False)
-      df_exp_cardio.to_excel(writer, sheet_name="Cardio Log", index=False)
-      df_exp_bw.to_excel(writer, sheet_name="Body Weight Log", index=False)
-      df_exp_profile.to_excel(writer, sheet_name="Profile", index=False)
-    excel_data = output.getvalue()
-
-    st.download_button(
-        label="📥 Download My Excel Backup",
-        data=excel_data,
-        file_name=f"Workout_Master_{st.session_state.username}_Backup.xlsx",
-        mime=(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        ),
+    st.markdown("---")
+    st.markdown("### ⚙️ Athlete Profile")
+    st.number_input(
+        "Body Weight (kg)",
+        min_value=30.0,
+        max_value=250.0,
+        step=0.5,
+        key="body_weight",
     )
-  except Exception as e:
-    st.error(f"Could not prepare Excel download: {e}")
+    st.selectbox("Gender", ["Male", "Female", "Other"], key="gender")
+    st.number_input("Age", min_value=10, max_value=100, key="age")
+    st.number_input(
+        "Height (cm)", min_value=100.0, max_value=250.0, step=1.0, key="height"
+    )
+
+    if st.button("Save Profile"):
+      updated_profile = {
+          "body_weight": st.session_state.body_weight,
+          "gender": st.session_state.gender,
+          "age": st.session_state.age,
+          "height": st.session_state.height,
+      }
+      save_profile_db(st.session_state.username, updated_profile)
+      st.success("Profile saved and synced securely!")
+
+    st.markdown("---")
+    st.markdown("### 💾 Personal Data Export")
+
+    try:
+      conn = get_db_connection()
+      df_exp_workouts = pd.read_sql_query(
+          "SELECT * FROM workouts WHERE username = ?",
+          conn,
+          params=(st.session_state.username,),
+      )
+      df_exp_cardio = pd.read_sql_query(
+          "SELECT * FROM cardio WHERE username = ?",
+          conn,
+          params=(st.session_state.username,),
+      )
+      df_exp_bw = pd.read_sql_query(
+          "SELECT * FROM body_weight WHERE username = ?",
+          conn,
+          params=(st.session_state.username,),
+      )
+      df_exp_profile = pd.read_sql_query(
+          "SELECT username, body_weight, gender, age, height FROM profiles"
+          " WHERE username = ?",
+          conn,
+          params=(st.session_state.username,),
+      )
+      conn.close()
+
+      output = io.BytesIO()
+      with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df_exp_workouts.to_excel(writer, sheet_name="Workout Log", index=False)
+        df_exp_cardio.to_excel(writer, sheet_name="Cardio Log", index=False)
+        df_exp_bw.to_excel(writer, sheet_name="Body Weight Log", index=False)
+        df_exp_profile.to_excel(writer, sheet_name="Profile", index=False)
+      excel_data = output.getvalue()
+
+      st.download_button(
+          label="📥 Download My Excel Backup",
+          data=excel_data,
+          file_name=(
+              f"Workout_Master_{st.session_state.username}_Backup.xlsx"
+          ),
+          mime=(
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          ),
+      )
+    except Exception as e:
+      st.error(f"Could not prepare Excel download: {e}")
+
+# --- AUTHENTICATION GATEKEEPER ---
+if not st.session_state.logged_in:
+  st.title("💪 Workout Master Suite")
+  st.info(
+      "👈 **Please log in or create an account using the sidebar to unlock your"
+      " training suite.**"
+  )
+  st.stop()
 
 current_user = st.session_state.username
 
@@ -600,12 +559,8 @@ with tab1:
 
     if st.button("Save Workout Entry"):
       try:
-        if DB_MODE == "cloud":
-          cursor = conn.cursor()
-        else:
-          local_conn = sqlite3.connect(DB_FILE)
-          cursor = local_conn.cursor()
-
+        conn = get_db_connection()
+        cursor = conn.cursor()
         date_str = log_date.strftime("%Y/%m/%d")
         cursor.execute(
             """
@@ -624,11 +579,8 @@ with tab1:
                 rpe,
             ),
         )
-        if DB_MODE == "cloud":
-          conn.commit()
-        else:
-          local_conn.commit()
-          local_conn.close()
+        conn.commit()
+        conn.close()
 
         st.success(
             f"Successfully logged {exercise_name} ({weight_str}) under"
@@ -690,12 +642,8 @@ with tab1:
 
     if st.button("Save Cardio Entry"):
       try:
-        if DB_MODE == "cloud":
-          cursor = conn.cursor()
-        else:
-          local_conn = sqlite3.connect(DB_FILE)
-          cursor = local_conn.cursor()
-
+        conn = get_db_connection()
+        cursor = conn.cursor()
         date_str = cardio_date.strftime("%Y/%m/%d")
         cursor.execute(
             """
@@ -712,11 +660,8 @@ with tab1:
                 pace_str,
             ),
         )
-        if DB_MODE == "cloud":
-          conn.commit()
-        else:
-          local_conn.commit()
-          local_conn.close()
+        conn.commit()
+        conn.close()
 
         st.success(
             f"Successfully logged {cardio_activity_name} for"
@@ -735,26 +680,16 @@ with tab1:
 
   with sub_tab_prev1:
     try:
-      if DB_MODE == "cloud":
-        df_log = pd.read_sql_query(
-            "SELECT id, date AS Date, routine AS 'Routine / Focus', exercise AS"
-            " Exercise, sets AS Sets, reps AS Reps, weight AS 'Weight (kg)',"
-            " total_volume AS 'Total Volume (kg)', rpe AS 'RPE (1-10)' FROM"
-            " workouts WHERE username = ? ORDER BY id DESC",
-            conn,
-            params=(st.session_state.username,),
-        )
-      else:
-        conn_prev = sqlite3.connect(DB_FILE)
-        df_log = pd.read_sql_query(
-            "SELECT id, date AS Date, routine AS 'Routine / Focus', exercise AS"
-            " Exercise, sets AS Sets, reps AS Reps, weight AS 'Weight (kg)',"
-            " total_volume AS 'Total Volume (kg)', rpe AS 'RPE (1-10)' FROM"
-            " workouts WHERE username = ? ORDER BY id DESC",
-            conn_prev,
-            params=(st.session_state.username,),
-        )
-        conn_prev.close()
+      conn = get_db_connection()
+      df_log = pd.read_sql_query(
+          "SELECT id, date AS Date, routine AS 'Routine / Focus', exercise AS"
+          " Exercise, sets AS Sets, reps AS Reps, weight AS 'Weight (kg)',"
+          " total_volume AS 'Total Volume (kg)', rpe AS 'RPE (1-10)' FROM"
+          " workouts WHERE username = ? ORDER BY id DESC",
+          conn,
+          params=(st.session_state.username,),
+      )
+      conn.close()
 
       if not df_log.empty:
         st.dataframe(df_log.drop(columns=["id"]).head(10), use_container_width=True)
@@ -784,28 +719,17 @@ with tab1:
           if st.button("Delete Selected Workout Entries", type="primary"):
             if selected_to_delete:
               try:
-                if DB_MODE == "cloud":
-                  cursor = conn.cursor()
-                  cursor.executemany(
-                      "DELETE FROM workouts WHERE id = ? AND username = ?",
-                      [
-                          (wid, st.session_state.username)
-                          for wid in selected_to_delete
-                      ],
-                  )
-                  conn.commit()
-                else:
-                  local_conn = sqlite3.connect(DB_FILE)
-                  cursor = local_conn.cursor()
-                  cursor.executemany(
-                      "DELETE FROM workouts WHERE id = ? AND username = ?",
-                      [
-                          (wid, st.session_state.username)
-                          for wid in selected_to_delete
-                      ],
-                  )
-                  local_conn.commit()
-                  local_conn.close()
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.executemany(
+                    "DELETE FROM workouts WHERE id = ? AND username = ?",
+                    [
+                        (wid, st.session_state.username)
+                        for wid in selected_to_delete
+                    ],
+                )
+                conn.commit()
+                conn.close()
 
                 st.success(
                     f"Successfully deleted {len(selected_to_delete)} workout"
@@ -826,26 +750,16 @@ with tab1:
 
   with sub_tab_prev2:
     try:
-      if DB_MODE == "cloud":
-        df_cardio_log = pd.read_sql_query(
-            "SELECT id, date AS Date, activity AS Activity, distance AS"
-            " 'Distance (km)', duration AS 'Duration (mins)', avg_hr AS 'Avg HR"
-            " (bpm)', pace AS Pace FROM cardio WHERE username = ? ORDER BY id"
-            " DESC",
-            conn,
-            params=(st.session_state.username,),
-        )
-      else:
-        conn_cardio_prev = sqlite3.connect(DB_FILE)
-        df_cardio_log = pd.read_sql_query(
-            "SELECT id, date AS Date, activity AS Activity, distance AS"
-            " 'Distance (km)', duration AS 'Duration (mins)', avg_hr AS 'Avg HR"
-            " (bpm)', pace AS Pace FROM cardio WHERE username = ? ORDER BY id"
-            " DESC",
-            conn_cardio_prev,
-            params=(st.session_state.username,),
-        )
-        conn_cardio_prev.close()
+      conn = get_db_connection()
+      df_cardio_log = pd.read_sql_query(
+          "SELECT id, date AS Date, activity AS Activity, distance AS"
+          " 'Distance (km)', duration AS 'Duration (mins)', avg_hr AS 'Avg HR"
+          " (bpm)', pace AS Pace FROM cardio WHERE username = ? ORDER BY id"
+          " DESC",
+          conn,
+          params=(st.session_state.username,),
+      )
+      conn.close()
 
       if not df_cardio_log.empty:
         st.dataframe(
@@ -877,28 +791,17 @@ with tab1:
           if st.button("Delete Selected Cardio Entries", type="primary"):
             if selected_cardio_to_delete:
               try:
-                if DB_MODE == "cloud":
-                  cursor = conn.cursor()
-                  cursor.executemany(
-                      "DELETE FROM cardio WHERE id = ? AND username = ?",
-                      [
-                          (cid, st.session_state.username)
-                          for cid in selected_cardio_to_delete
-                      ],
-                  )
-                  conn.commit()
-                else:
-                  local_conn = sqlite3.connect(DB_FILE)
-                  cursor = local_conn.cursor()
-                  cursor.executemany(
-                      "DELETE FROM cardio WHERE id = ? AND username = ?",
-                      [
-                          (cid, st.session_state.username)
-                          for cid in selected_cardio_to_delete
-                      ],
-                  )
-                  local_conn.commit()
-                  local_conn.close()
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.executemany(
+                    "DELETE FROM cardio WHERE id = ? AND username = ?",
+                    [
+                        (cid, st.session_state.username)
+                        for cid in selected_cardio_to_delete
+                    ],
+                )
+                conn.commit()
+                conn.close()
 
                 st.success(
                     f"Successfully deleted {len(selected_cardio_to_delete)}"
@@ -942,12 +845,8 @@ with tab2:
 
     if submit_bw:
       try:
-        if DB_MODE == "cloud":
-          cursor = conn.cursor()
-        else:
-          local_conn = sqlite3.connect(DB_FILE)
-          cursor = local_conn.cursor()
-
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute(
             """
                     INSERT INTO body_weight (username, date, body_weight, notes)
@@ -960,11 +859,8 @@ with tab2:
                 bw_notes,
             ),
         )
-        if DB_MODE == "cloud":
-          conn.commit()
-        else:
-          local_conn.commit()
-          local_conn.close()
+        conn.commit()
+        conn.close()
 
         st.success(
             f"Successfully recorded body weight: {logged_bw} kg saved for"
@@ -976,22 +872,14 @@ with tab2:
   st.markdown("---")
   st.subheader("📈 Body Weight Trend & Management")
   try:
-    if DB_MODE == "cloud":
-      df_bw = pd.read_sql_query(
-          "SELECT id, date AS Date, body_weight AS 'Body Weight (kg)', notes AS"
-          " Notes FROM body_weight WHERE username = ? ORDER BY date ASC",
-          conn,
-          params=(st.session_state.username,),
-      )
-    else:
-      conn_bw = sqlite3.connect(DB_FILE)
-      df_bw = pd.read_sql_query(
-          "SELECT id, date AS Date, body_weight AS 'Body Weight (kg)', notes AS"
-          " Notes FROM body_weight WHERE username = ? ORDER BY date ASC",
-          conn_bw,
-          params=(st.session_state.username,),
-      )
-      conn_bw.close()
+    conn = get_db_connection()
+    df_bw = pd.read_sql_query(
+        "SELECT id, date AS Date, body_weight AS 'Body Weight (kg)', notes AS"
+        " Notes FROM body_weight WHERE username = ? ORDER BY date ASC",
+        conn,
+        params=(st.session_state.username,),
+    )
+    conn.close()
 
     if not df_bw.empty:
       st.dataframe(df_bw.drop(columns=["id"]), use_container_width=True)
@@ -1031,28 +919,17 @@ with tab2:
         ):
           if selected_bw_to_delete:
             try:
-              if DB_MODE == "cloud":
-                cursor = conn.cursor()
-                cursor.executemany(
-                    "DELETE FROM body_weight WHERE id = ? AND username = ?",
-                    [
-                        (wid, st.session_state.username)
-                        for wid in selected_bw_to_delete
-                    ],
-                )
-                conn.commit()
-              else:
-                local_conn = sqlite3.connect(DB_FILE)
-                cursor = local_conn.cursor()
-                cursor.executemany(
-                    "DELETE FROM body_weight WHERE id = ? AND username = ?",
-                    [
-                        (wid, st.session_state.username)
-                        for wid in selected_bw_to_delete
-                    ],
-                )
-                local_conn.commit()
-                local_conn.close()
+              conn = get_db_connection()
+              cursor = conn.cursor()
+              cursor.executemany(
+                  "DELETE FROM body_weight WHERE id = ? AND username = ?",
+                  [
+                      (wid, st.session_state.username)
+                      for wid in selected_bw_to_delete
+                  ],
+              )
+              conn.commit()
+              conn.close()
 
               st.success(
                   f"Successfully deleted {len(selected_bw_to_delete)} body weight"
@@ -1079,26 +956,16 @@ with tab3:
 
   with an_tab1:
     try:
-      if DB_MODE == "cloud":
-        df_analytics = pd.read_sql_query(
-            "SELECT date AS Date, routine AS 'Routine / Focus', exercise AS"
-            " Exercise, sets AS Sets, reps AS Reps, weight AS 'Weight (kg)',"
-            " total_volume AS 'Total Volume (kg)', rpe AS 'RPE (1-10)' FROM"
-            " workouts WHERE username = ? ORDER BY id ASC",
-            conn,
-            params=(st.session_state.username,),
-        )
-      else:
-        conn_an = sqlite3.connect(DB_FILE)
-        df_analytics = pd.read_sql_query(
-            "SELECT date AS Date, routine AS 'Routine / Focus', exercise AS"
-            " Exercise, sets AS Sets, reps AS Reps, weight AS 'Weight (kg)',"
-            " total_volume AS 'Total Volume (kg)', rpe AS 'RPE (1-10)' FROM"
-            " workouts WHERE username = ? ORDER BY id ASC",
-            conn_an,
-            params=(st.session_state.username,),
-        )
-        conn_an.close()
+      conn = get_db_connection()
+      df_analytics = pd.read_sql_query(
+          "SELECT date AS Date, routine AS 'Routine / Focus', exercise AS"
+          " Exercise, sets AS Sets, reps AS Reps, weight AS 'Weight (kg)',"
+          " total_volume AS 'Total Volume (kg)', rpe AS 'RPE (1-10)' FROM"
+          " workouts WHERE username = ? ORDER BY id ASC",
+          conn,
+          params=(st.session_state.username,),
+      )
+      conn.close()
 
       if not df_analytics.empty and "Total Volume (kg)" in df_analytics.columns:
         df_analytics["Clean_Volume"] = (
@@ -1139,26 +1006,16 @@ with tab3:
 
   with an_tab2:
     try:
-      if DB_MODE == "cloud":
-        df_cardio_an = pd.read_sql_query(
-            "SELECT date AS Date, activity AS Activity, distance AS"
-            " 'Distance (km)', duration AS 'Duration (mins)', avg_hr AS 'Avg HR"
-            " (bpm)', pace AS Pace FROM cardio WHERE username = ? ORDER BY id"
-            " ASC",
-            conn,
-            params=(st.session_state.username,),
-        )
-      else:
-        conn_can = sqlite3.connect(DB_FILE)
-        df_cardio_an = pd.read_sql_query(
-            "SELECT date AS Date, activity AS Activity, distance AS"
-            " 'Distance (km)', duration AS 'Duration (mins)', avg_hr AS 'Avg HR"
-            " (bpm)', pace AS Pace FROM cardio WHERE username = ? ORDER BY id"
-            " ASC",
-            conn_can,
-            params=(st.session_state.username,),
-        )
-        conn_can.close()
+      conn = get_db_connection()
+      df_cardio_an = pd.read_sql_query(
+          "SELECT date AS Date, activity AS Activity, distance AS"
+          " 'Distance (km)', duration AS 'Duration (mins)', avg_hr AS 'Avg HR"
+          " (bpm)', pace AS Pace FROM cardio WHERE username = ? ORDER BY id"
+          " ASC",
+          conn,
+          params=(st.session_state.username,),
+      )
+      conn.close()
 
       if not df_cardio_an.empty:
         st.markdown("### Cardio Distance Over Time")
@@ -1213,12 +1070,8 @@ with tab5:
 
     if submit_review:
       try:
-        if DB_MODE == "cloud":
-          cursor = conn.cursor()
-        else:
-          local_conn = sqlite3.connect(DB_FILE)
-          cursor = local_conn.cursor()
-
+        conn = get_db_connection()
+        cursor = conn.cursor()
         current_date = datetime.today().strftime("%Y/%m/%d")
         current_time_str = datetime.now().strftime("%H:%M:%S")
         cursor.execute(
@@ -1235,11 +1088,8 @@ with tab5:
                 message,
             ),
         )
-        if DB_MODE == "cloud":
-          conn.commit()
-        else:
-          local_conn.commit()
-          local_conn.close()
+        conn.commit()
+        conn.close()
 
         st.success("Thank you! Your feedback has been successfully submitted.")
       except Exception as e:
@@ -1256,22 +1106,14 @@ with tab5:
   if admin_pin == "2026":
     st.success("Admin access granted!")
     try:
-      if DB_MODE == "cloud":
-        df_reviews = pd.read_sql_query(
-            "SELECT date AS Date, time AS Time, tester_name AS 'Tester', rating"
-            " AS 'Rating (1-5)', category AS Category, message AS Message FROM"
-            " reviews ORDER BY id DESC",
-            conn,
-        )
-      else:
-        conn_rev = sqlite3.connect(DB_FILE)
-        df_reviews = pd.read_sql_query(
-            "SELECT date AS Date, time AS Time, tester_name AS 'Tester', rating"
-            " AS 'Rating (1-5)', category AS Category, message AS Message FROM"
-            " reviews ORDER BY id DESC",
-            conn_rev,
-        )
-        conn_rev.close()
+      conn = get_db_connection()
+      df_reviews = pd.read_sql_query(
+          "SELECT date AS Date, time AS Time, tester_name AS 'Tester', rating AS"
+          " 'Rating (1-5)', category AS Category, message AS Message FROM"
+          " reviews ORDER BY id DESC",
+          conn,
+      )
+      conn.close()
 
       if not df_reviews.empty:
         st.dataframe(df_reviews, use_container_width=True)
