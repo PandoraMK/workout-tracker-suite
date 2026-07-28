@@ -124,6 +124,35 @@ init_db()
 
 
 # --- HELPER FUNCTIONS ---
+def reset_database():
+  """Drops all tables and recreates them fresh from scratch."""
+  conn = get_db_connection()
+  cursor = conn.cursor()
+  cursor.execute("DROP TABLE IF EXISTS workouts")
+  cursor.execute("DROP TABLE IF EXISTS cardio")
+  cursor.execute("DROP TABLE IF EXISTS reviews")
+  cursor.execute("DROP TABLE IF EXISTS body_weight")
+  cursor.execute("DROP TABLE IF EXISTS profiles")
+  conn.commit()
+  conn.close()
+  init_db()
+
+
+def delete_user_data(username_to_delete):
+  """Deletes all data and profile records for a specific user."""
+  conn = get_db_connection()
+  cursor = conn.cursor()
+  cursor.execute("DELETE FROM workouts WHERE username = ?", (username_to_delete,))
+  cursor.execute("DELETE FROM cardio WHERE username = ?", (username_to_delete,))
+  cursor.execute(
+      "DELETE FROM body_weight WHERE username = ?", (username_to_delete,)
+  )
+  cursor.execute("DELETE FROM profiles WHERE username = ?", (username_to_delete,))
+  cursor.execute("DELETE FROM reviews WHERE tester_name = ?", (username_to_delete,))
+  conn.commit()
+  conn.close()
+
+
 def load_profile(username):
   conn = get_db_connection()
   try:
@@ -185,7 +214,6 @@ if "username" not in st.session_state:
 if "logged_in" not in st.session_state:
   st.session_state.logged_in = False
 
-# Pre-load profile into session state BEFORE widgets are instantiated
 if st.session_state.logged_in and st.session_state.username:
   if (
       "current_loaded_user" not in st.session_state
@@ -1098,13 +1126,84 @@ with tab5:
   st.markdown("---")
   st.subheader("🔒 Admin Dashboard (Maker Only)")
   st.write(
-      "Enter the Admin PIN to view incoming user reviews and feedback history."
+      "Enter the Admin PIN to view incoming user reviews and manage accounts."
   )
 
   admin_pin = st.text_input("Admin PIN", type="password", key="admin_pin_input")
 
   if admin_pin == "2026":
     st.success("Admin access granted!")
+
+    # --- USER-SPECIFIC RESET / DELETE SECTION ---
+    st.markdown("---")
+    st.markdown("### 👤 Particular User Account Reset & Deletion")
+    st.write(
+        "Select a specific user account to wipe their profile, password, and all"
+        " workouts, cardio, and body weight logs."
+    )
+
+    try:
+      conn = get_db_connection()
+      df_users = pd.read_sql_query("SELECT username FROM profiles", conn)
+      conn.close()
+
+      if not df_users.empty:
+        user_list = df_users["username"].tolist()
+        selected_user_to_reset = st.selectbox(
+            "Select User Account", user_list, key="select_user_to_reset"
+        )
+
+        col_u1, col_u2 = st.columns([2, 1])
+        with col_u1:
+          st.warning(
+              f"This will permanently delete user **{selected_user_to_reset}**"
+              " and all their associated data."
+          )
+        with col_u2:
+          if st.button(
+              f"🗑️ Delete User '{selected_user_to_reset}'",
+              type="primary",
+              key="btn_del_specific_user",
+          ):
+            delete_user_data(selected_user_to_reset)
+            if st.session_state.username == selected_user_to_reset:
+              st.session_state.logged_in = False
+              st.session_state.username = None
+              st.session_state.pop("current_loaded_user", None)
+            st.success(
+                f"Successfully deleted user '{selected_user_to_reset}' and all"
+                " associated data!"
+            )
+            st.rerun()
+      else:
+        st.info("No registered user accounts found.")
+    except Exception as e:
+      st.error(f"Error loading user accounts: {e}")
+
+    # --- DANGER ZONE: GLOBAL DATABASE RESET ---
+    st.markdown("---")
+    with st.expander("⚠️ Danger Zone: Global Database Reset", expanded=False):
+      st.warning(
+          "Clicking this button will permanently delete ALL user accounts and"
+          " data across the entire app, reverting to the default `Modiri`"
+          " account."
+      )
+      if st.button(
+          "🗑️ Wipe & Reset Entire Database Now",
+          type="primary",
+          key="btn_reset_db",
+      ):
+        reset_database()
+        st.session_state.logged_in = False
+        st.session_state.username = None
+        st.session_state.pop("current_loaded_user", None)
+        st.success(
+            "Database has been completely wiped and reset for everyone!"
+        )
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("### 📋 Submitted Reviews History")
     try:
       conn = get_db_connection()
       df_reviews = pd.read_sql_query(
@@ -1124,4 +1223,4 @@ with tab5:
   elif admin_pin != "":
     st.error("Incorrect Admin PIN.")
   else:
-    st.info("Please enter your Admin PIN to unlock the review history table.")
+    st.info("Please enter your Admin PIN to unlock the admin dashboard.")
