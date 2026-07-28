@@ -199,10 +199,17 @@ def save_profile_db(profile_data):
     local_conn.close()
 
 
-if "user_profile" not in st.session_state:
-  st.session_state.user_profile = load_profile()
+# --- SESSION STATE INITIALIZATION FOR PROFILE ---
+if "profile_loaded" not in st.session_state:
+  p_data = load_profile()
+  st.session_state.name = p_data.get("name", "Modiri")
+  st.session_state.body_weight = float(p_data.get("body_weight", 88.0))
+  st.session_state.gender = p_data.get("gender", "Male")
+  st.session_state.age = int(p_data.get("age", 25))
+  st.session_state.height = float(p_data.get("height", 178.0))
+  st.session_state.profile_loaded = True
 
-current_user = st.session_state.user_profile.get("name", "Modiri")
+current_user = st.session_state.name
 
 st.set_page_config(
     page_title=f"{current_user}'s Workout Master Suite",
@@ -213,45 +220,30 @@ st.set_page_config(
 # --- SIDEBAR FOR USER PROFILE & SETTINGS ---
 with st.sidebar:
   st.markdown("### ⚙️ Athlete Profile")
-  p = st.session_state.user_profile
 
-  entered_name = st.text_input("Name", value=p.get("name", "Modiri"))
-  entered_bw = st.number_input(
+  st.text_input("Name", key="name")
+  st.number_input(
       "Body Weight (kg)",
       min_value=30.0,
       max_value=250.0,
-      value=float(p.get("body_weight", 88.0)),
       step=0.5,
+      key="body_weight",
   )
-  entered_gender = st.selectbox(
-      "Gender",
-      ["Male", "Female", "Other"],
-      index=(
-          0
-          if p.get("gender", "Male") == "Male"
-          else (1 if p.get("gender") == "Female" else 2)
-      ),
-  )
-  entered_age = st.number_input(
-      "Age", min_value=10, max_value=100, value=int(p.get("age", 25))
-  )
-  entered_height = st.number_input(
-      "Height (cm)",
-      min_value=100.0,
-      max_value=250.0,
-      value=float(p.get("height", 178.0)),
-      step=1.0,
+  st.selectbox("Gender", ["Male", "Female", "Other"], key="gender")
+  st.number_input("Age", min_value=10, max_value=100, key="age")
+  st.number_input(
+      "Height (cm)", min_value=100.0, max_value=250.0, step=1.0, key="height"
   )
 
   if st.button("Save Profile"):
-    st.session_state.user_profile = {
-        "name": entered_name,
-        "body_weight": entered_bw,
-        "gender": entered_gender,
-        "age": entered_age,
-        "height": entered_height,
+    updated_profile = {
+        "name": st.session_state.name,
+        "body_weight": st.session_state.body_weight,
+        "gender": st.session_state.gender,
+        "age": st.session_state.age,
+        "height": st.session_state.height,
     }
-    save_profile_db(st.session_state.user_profile)
+    save_profile_db(updated_profile)
     st.success("Profile saved and synced across devices!")
 
   st.markdown("---")
@@ -294,13 +286,13 @@ with st.sidebar:
   except Exception as e:
     st.error(f"Could not prepare Excel download: {e}")
 
-current_user = st.session_state.user_profile.get("name", "Modiri")
+current_user = st.session_state.name
 
 st.title(f"💪 {current_user}'s Workout Master Suite")
 st.write(
     f"Elite training tracker for **{current_user}** (BW:"
-    f" {st.session_state.user_profile.get('body_weight')}kg) with cloud"
-    " multi-device sync & Excel backups."
+    f" {st.session_state.body_weight}kg) with cloud multi-device sync & Excel"
+    " backups."
 )
 
 # --- NAVIGATION TABS ---
@@ -795,7 +787,7 @@ with tab2:
           "Body Weight (kg)",
           min_value=30.0,
           max_value=250.0,
-          value=float(st.session_state.user_profile.get("body_weight", 88.0)),
+          value=float(st.session_state.body_weight),
           step=0.1,
       )
     with c2:
