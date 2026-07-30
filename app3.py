@@ -116,7 +116,8 @@ def init_db():
     cursor.execute("ALTER TABLE profiles ADD COLUMN password TEXT")
   if "goal" not in profile_cols:
     cursor.execute(
-        "ALTER TABLE profiles ADD COLUMN goal TEXT DEFAULT 'Body Recomposition'"
+        "ALTER TABLE profiles ADD COLUMN goal TEXT DEFAULT 'Hourglass & Thick /"
+        " Curvy Sculpting'"
     )
   if "target_bw" not in profile_cols:
     cursor.execute("ALTER TABLE profiles ADD COLUMN target_bw REAL DEFAULT 85.0")
@@ -125,7 +126,7 @@ def init_db():
 
   cursor.execute("""
         INSERT OR IGNORE INTO profiles (username, password, body_weight, gender, age, height, goal, target_bw, target_bf)
-        VALUES ('Modiri', '2026', 88.0, 'Male', 25, 178.0, 'Body Recomposition (Fat Loss & Muscle Gain)', 85.0, 22.0)
+        VALUES ('Modiri', '2026', 88.0, 'Male', 25, 178.0, 'Hourglass & Thick / Curvy Sculpting', 85.0, 22.0)
     """)
 
   conn.commit()
@@ -169,6 +170,56 @@ def fetch_body_weight(username):
       conn,
       params=(username,),
   )
+
+
+# --- ROUTINE EXERCISE MAPPINGS (THICK & CURVY / HOURGLASS FOCUS) ---
+routine_exercises_map = {
+    "Hourglass Lower Body A (Glute Max & Projection)": [
+        "Heavy Barbell Hip Thrusts",
+        "Romanian Deadlifts (RDLs) - Wide Stance",
+        "Bulgarian Split Squats (Torso Leaned Forward)",
+        "Seated Leg Press (High & Wide Foot Placement)",
+        "Cable Pull-Throughs",
+        "Standing Calf Raises",
+    ],
+    "Hourglass Lower Body B (Hip Width & Roundness)": [
+        "Sumo Deadlifts or Sumo Squats",
+        "Seated Machine Hip Abductors (Outer Glutes / Roundness)",
+        "Cable Glute Kickbacks (Straight & Crossover)",
+        "Smith Machine Curtsy Lunges",
+        "Seated Hip Adductor Machine",
+        "Dumbbell Walking Lunges",
+    ],
+    "Upper Body & Waist Definition (Hourglass Tone)": [
+        "Lat Pulldown (Wide Grip for V-Taper)",
+        "Incline Dumbbell Press",
+        "Cable Face Pulls",
+        "Dumbbell Lateral Raises",
+        "Weighted Russian Twists",
+        "Pallof Press (Core Stability & Waist Toning)",
+    ],
+    "Core & Waist-to-Hip Ratio": [
+        "Hanging Knee / Leg Raises",
+        "Cable Woodchoppers",
+        "Plank with Hip Dips",
+        "Decline Oblique Crunches",
+        "Vacuum Holds (Transverse Abdominis Control)",
+    ],
+    "Strict Fat Loss Circuit": [
+        "Stairmaster / Incline Treadmill (12-3-30)",
+        "Kettlebell Sumo Deadlift High-Pulls",
+        "Jump Squats / Bodyweight Plyometrics",
+        "Mountain Climbers",
+        "Assault Bike Intervals",
+    ],
+    "Cardio Equipment & Running": [
+        "Treadmill Run / Jog",
+        "Keiser Bicycle",
+        "Arc Trainer",
+        "Assault Bike",
+        "Rowing Machine",
+    ],
+}
 
 
 # --- HELPER FUNCTIONS ---
@@ -217,7 +268,7 @@ def load_profile(username):
           "goal": (
               df["goal"].iloc[0]
               if pd.notna(df["goal"].iloc[0])
-              else "Body Recomposition"
+              else "Hourglass & Thick / Curvy Sculpting"
           ),
           "target_bw": (
               float(df["target_bw"].iloc[0])
@@ -234,12 +285,12 @@ def load_profile(username):
     pass
   return {
       "body_weight": 75.0,
-      "gender": "Male",
+      "gender": "Female",
       "age": 25,
-      "height": 175.0,
-      "goal": "Body Recomposition (Fat Loss & Muscle Gain)",
-      "target_bw": 85.0,
-      "target_bf": 22.0,
+      "height": 165.0,
+      "goal": "Hourglass & Thick / Curvy Sculpting",
+      "target_bw": 70.0,
+      "target_bf": 20.0,
   }
 
 
@@ -280,30 +331,30 @@ if st.session_state.logged_in and st.session_state.username:
   ):
     p_data = load_profile(st.session_state.username)
     st.session_state.body_weight = p_data.get("body_weight", 75.0)
-    st.session_state.gender = p_data.get("gender", "Male")
+    st.session_state.gender = p_data.get("gender", "Female")
     st.session_state.age = p_data.get("age", 25)
-    st.session_state.height = p_data.get("height", 175.0)
+    st.session_state.height = p_data.get("height", 165.0)
     st.session_state.goal = p_data.get(
-        "goal", "Body Recomposition (Fat Loss & Muscle Gain)"
+        "goal", "Hourglass & Thick / Curvy Sculpting"
     )
-    st.session_state.target_bw = p_data.get("target_bw", 85.0)
-    st.session_state.target_bf = p_data.get("target_bf", 22.0)
+    st.session_state.target_bw = p_data.get("target_bw", 70.0)
+    st.session_state.target_bf = p_data.get("target_bf", 20.0)
     st.session_state.current_loaded_user = st.session_state.username
 else:
   if "body_weight" not in st.session_state:
     st.session_state.body_weight = 75.0
   if "gender" not in st.session_state:
-    st.session_state.gender = "Male"
+    st.session_state.gender = "Female"
   if "age" not in st.session_state:
     st.session_state.age = 25
   if "height" not in st.session_state:
-    st.session_state.height = 175.0
+    st.session_state.height = 165.0
   if "goal" not in st.session_state:
-    st.session_state.goal = "Body Recomposition (Fat Loss & Muscle Gain)"
+    st.session_state.goal = "Hourglass & Thick / Curvy Sculpting"
   if "target_bw" not in st.session_state:
-    st.session_state.target_bw = 85.0
+    st.session_state.target_bw = 70.0
   if "target_bf" not in st.session_state:
-    st.session_state.target_bf = 22.0
+    st.session_state.target_bf = 20.0
 
 st.set_page_config(
     page_title="Workout Master Suite", page_icon="💪", layout="centered"
@@ -355,7 +406,7 @@ with st.sidebar:
             cursor.execute(
                 """
                             INSERT INTO profiles (username, password, body_weight, gender, age, height, goal, target_bw, target_bf)
-                            VALUES (?, ?, 75.0, 'Male', 25, 175.0, 'Body Recomposition (Fat Loss & Muscle Gain)', 85.0, 22.0)
+                            VALUES (?, ?, 75.0, 'Female', 25, 165.0, 'Hourglass & Thick / Curvy Sculpting', 70.0, 20.0)
                         """,
                 (u_clean, p_clean),
             )
@@ -379,7 +430,6 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 🧭 Nested Navigation")
 
-    # Nested Selectbox & Radio Menu System
     main_category = st.selectbox(
         "Menu Category",
         [
@@ -412,7 +462,7 @@ with st.sidebar:
         step=0.5,
         key="body_weight",
     )
-    st.selectbox("Gender", ["Male", "Female", "Other"], key="gender")
+    st.selectbox("Gender", ["Female", "Male", "Other"], key="gender")
     st.number_input("Age", min_value=10, max_value=100, key="age")
     st.number_input(
         "Height (cm)", min_value=100.0, max_value=250.0, step=1.0, key="height"
@@ -506,7 +556,6 @@ with st.expander("🛡️ Data Policy & Privacy Information", expanded=False):
 
 st.markdown("---")
 
-# Default page if not defined
 if "selected_page" not in locals() and "selected_page" not in globals():
   selected_page = "📝 Logger Form"
 
@@ -523,77 +572,6 @@ if selected_page == "📝 Logger Form":
   )
 
   if log_type == "🏋️ Strength & Bodyweight Workout":
-    routine_exercises_map = {
-        "Upper Body A": [
-            "Barbell Bench Press",
-            "Incline DB Press",
-            "Overhead Shoulder Press",
-            "Cable Lateral Raises",
-            "DB Lateral Raises",
-            "Tricep Pushdowns",
-        ],
-        "Upper Body B": [
-            "Lat Pulldown",
-            "Seated Cable Row",
-            "Neutral Grip Pull-Ups",
-            "Barbell Bent-Over Row",
-            "Face Pulls",
-            "Rear Delt Fly",
-        ],
-        "Lower Body A": [
-            "Barbell Back Squat",
-            "Seated Leg Press",
-            "Leg Extensions",
-            "Machine Leg Curl",
-            "Romanian Deadlift",
-            "Standing Calf Raises",
-            "Seated Calf Raises",
-        ],
-        "Lower Body B": [
-            "Bulgarian Split Squat",
-            "Goblet Squat",
-            "Seated Leg Press",
-            "Leg Extensions",
-            "Machine Leg Curl",
-            "Romanian Deadlift",
-            "Standing Calf Raises",
-        ],
-        "Core & Abs": [
-            "Abdominal Crunch Machines",
-            "Cable Crunches",
-            "Hanging Leg Raises",
-            "Plank Hold",
-            "Russian Twists",
-            "Decline Sit-Ups",
-        ],
-        "Cardio Equipment": [
-            "Keiser Bicycle",
-            "Arc Trainer",
-            "Treadmill Run",
-            "Assault Bike",
-            "Rowing Machine",
-        ],
-        "Home Workouts": [
-            "Standard Push-Ups",
-            "Pike Push-Ups",
-            "Bodyweight Squats",
-            "Chair Bulgarian Split Squats",
-            "Walking Lunges",
-            "Glute Bridges",
-            "Chair Dips",
-            "Superman Back Extensions",
-            "Plank Hold",
-        ],
-        "Full Body": [
-            "Barbell Back Squat",
-            "Barbell Bench Press",
-            "Lat Pulldown",
-            "Seated Leg Press",
-            "Leg Extensions",
-            "Standing Calf Raises",
-        ],
-    }
-
     col1, col2 = st.columns(2)
     with col1:
       routine_options = list(routine_exercises_map.keys()) + ["Custom"]
@@ -602,8 +580,8 @@ if selected_page == "📝 Logger Form":
       if routine == "Custom":
         routine_name = st.text_input("Enter custom routine name", "Custom Focus")
         available_exercises = [
-            "Barbell Back Squat",
-            "Barbell Bench Press",
+            "Heavy Barbell Hip Thrusts",
+            "Romanian Deadlifts",
             "Lat Pulldown",
         ]
       else:
@@ -620,10 +598,12 @@ if selected_page == "📝 Logger Form":
         exercise_name = exercise_choice
 
     st.markdown("---")
-    st.write("🏋️ **Set & Weight Progression (Pyramids / Weight Changes)**")
+    st.write(
+        "🏋️ **Set & Weight Progression (Pyramids / Hourglass Focus)**"
+    )
     st.info(
-        "💡 **Pro Tip:** Remember to take at least **2 minutes of rest** between"
-        " working sets for optimal ATP recovery and muscle growth!"
+        "💡 **Pro Tip:** For glute and lower body growth, focus on a 2-3 second"
+        " eccentric (lowering) phase and a hard contraction at the top!"
     )
 
     num_blocks = st.selectbox(
@@ -633,7 +613,7 @@ if selected_page == "📝 Logger Form":
     total_sets = 0
     total_volume = 0
     weight_parts = []
-    representative_reps = 8
+    representative_reps = 10
 
     for i in range(num_blocks):
       if num_blocks > 1:
@@ -645,7 +625,7 @@ if selected_page == "📝 Logger Form":
             f"Sets ({i+1})",
             min_value=1,
             max_value=20,
-            value=2 if i > 0 else 4,
+            value=3 if i > 0 else 4,
             key=f"sets_{i}",
         )
       with c2:
@@ -653,7 +633,7 @@ if selected_page == "📝 Logger Form":
             f"Reps ({i+1})",
             min_value=1,
             max_value=100,
-            value=12 if routine == "Home Workouts" else 8,
+            value=12,
             key=f"reps_{i}",
         )
       with c3:
@@ -661,7 +641,7 @@ if selected_page == "📝 Logger Form":
             f"Weight kg ({i+1}) (0 for Bodyweight)",
             min_value=0.0,
             max_value=500.0,
-            value=0.0 if routine == "Home Workouts" else 40.0 + (i * 5.0),
+            value=0.0 if "Circuit" in routine else 30.0 + (i * 5.0),
             step=2.5,
             key=f"weight_{i}",
         )
@@ -732,10 +712,10 @@ if selected_page == "📝 Logger Form":
   else:  # Cardio Session
     st.write("🏃 **Cardio Metrics**")
     cardio_activity_options = [
+        "Stairmaster / Incline Treadmill",
         "Outside Running",
         "Indoor Treadmill Run",
         "Keiser Bicycle",
-        "Arc Trainer",
         "Assault Bike",
         "Rowing Machine",
         "Other",
@@ -759,7 +739,7 @@ if selected_page == "📝 Logger Form":
       )
     with c3:
       cardio_hr = st.number_input(
-          "Avg Heart Rate (bpm)", min_value=0, max_value=220, value=145, step=1
+          "Avg Heart Rate (bpm)", min_value=0, max_value=220, value=140, step=1
       )
 
     if cardio_dist > 0:
@@ -944,9 +924,10 @@ elif selected_page == "🎯 Goals & Workout Plan":
   )
 
   goal_options = [
+      "Hourglass & Thick / Curvy Sculpting",
+      "Strict Fat Loss",
       "Body Recomposition (Fat Loss & Muscle Gain)",
       "Hypertrophy / Muscle Building",
-      "Strength & Power Focus",
       "Cardiovascular Endurance & Running",
   ]
 
@@ -1011,7 +992,7 @@ elif selected_page == "🎯 Goals & Workout Plan":
       "Saturday",
       "Sunday",
   ]
-  default_days = ["Monday", "Tuesday", "Wednesday", "Friday", "Saturday"]
+  default_days = ["Monday", "Tuesday", "Thursday", "Friday", "Saturday"]
 
   chosen_training_days = st.multiselect(
       "Select the days of the week you want to train:",
@@ -1021,13 +1002,12 @@ elif selected_page == "🎯 Goals & Workout Plan":
   )
 
   possible_focuses = [
-      "Upper Body A (Chest, Shoulders, Triceps + Core)",
-      "Upper Body B (Back, Rear Delts, Biceps + Core)",
-      "Lower Body A (Squats, Leg Press, Extensions, Curls)",
-      "Lower Body B / Functional Strength",
-      "Running / Cardio Session (5km-10km)",
-      "Full Body Strength",
-      "Core & Mobility Work",
+      "Hourglass Lower Body A (Glute Max & Projection)",
+      "Hourglass Lower Body B (Hip Width & Roundness)",
+      "Upper Body & Waist Definition (Hourglass Tone)",
+      "Core & Waist-to-Hip Ratio",
+      "Strict Fat Loss Circuit",
+      "Cardio Equipment & Running",
   ]
 
   plan_sessions = []
@@ -1038,14 +1018,17 @@ elif selected_page == "🎯 Goals & Workout Plan":
       with c_d1:
         st.markdown(f"**{day}**")
       with c_d2:
-        # Default index heuristic
         default_idx = (
             0
             if "Monday" in day
             else (
-                4
-                if "Tuesday" in day or "Saturday" in day
-                else 2 if "Wednesday" in day else 1
+                1
+                if "Tuesday" in day
+                else (
+                    2
+                    if "Thursday" in day
+                    else (3 if "Friday" in day else 4)
+                )
             )
         )
         if default_idx >= len(possible_focuses):
@@ -1085,18 +1068,23 @@ elif selected_page == "🎯 Goals & Workout Plan":
         "Running" in chosen_session
         or "Run" in chosen_session
         or "Cardio" in chosen_session
+        or "Circuit" in chosen_session
     )
 
     if is_cardio_session:
-      st.markdown("##### 🏃 Cardio Metrics")
+      st.markdown("##### 🏃 Cardio & Conditioning Metrics")
       c_dist = st.number_input(
-          "Distance (km)", min_value=0.1, max_value=50.0, value=5.0, step=0.1
+          "Distance (km) / Intensity Equivalent",
+          min_value=0.1,
+          max_value=50.0,
+          value=5.0,
+          step=0.1,
       )
       c_dur = st.number_input(
           "Duration (mins)", min_value=1, max_value=300, value=30, step=1
       )
       c_hr = st.number_input(
-          "Avg Heart Rate (bpm)", min_value=0, max_value=220, value=145
+          "Avg Heart Rate (bpm)", min_value=0, max_value=220, value=140
       )
     else:
       st.markdown(
@@ -1124,7 +1112,7 @@ elif selected_page == "🎯 Goals & Workout Plan":
               f"Sets ({i+1})",
               min_value=1,
               max_value=20,
-              value=2 if i > 0 else 4,
+              value=3 if i > 0 else 4,
               key=f"plan_sets_{i}",
           )
         with c2:
@@ -1132,7 +1120,7 @@ elif selected_page == "🎯 Goals & Workout Plan":
               f"Reps ({i+1})",
               min_value=1,
               max_value=100,
-              value=10,
+              value=12,
               key=f"plan_reps_{i}",
           )
         with c3:
@@ -1140,7 +1128,7 @@ elif selected_page == "🎯 Goals & Workout Plan":
               f"Weight kg ({i+1}) (0 for Bodyweight)",
               min_value=0.0,
               max_value=500.0,
-              value=50.0 + (i * 5.0),
+              value=30.0 + (i * 5.0),
               step=2.5,
               key=f"plan_weight_{i}",
           )
@@ -1209,8 +1197,8 @@ elif selected_page == "🎯 Goals & Workout Plan":
               ),
           )
           st.success(
-              f"Successfully logged cardio session '{chosen_session}' ({c_dist}"
-              f" km) to your progress tracker!"
+              f"Successfully logged session '{chosen_session}' to your"
+              " progress tracker!"
           )
         else:
           cursor.execute(
@@ -1428,10 +1416,10 @@ elif selected_page == "📈 Progress & Analytics":
 elif selected_page == "📖 Glossary & Feedback":
   st.subheader("📖 Glossary & Definitions")
   st.markdown("""
-  * **RPE (Rate of Perceived Exertion):** A scale from 1 to 10 measuring how intense a set felt. 10 is absolute failure, while 7-8 leaves 2-3 reps in reserve (RIR).
-  * **Total Volume:** The total weight lifted calculated as Sets × Reps × Weight. Used to track progressive overload over time.
-  * **Pace:** The time taken per kilometer during a cardio session, automatically calculated from distance and duration.
-  * **Body Recomposition:** The simultaneous process of building muscle mass while reducing body fat percentage.
+  * **Glute Max Projection:** Building thickness and rear lift through deep hip-extension movements like barbell hip thrusts and heavy RDLs.
+  * **Hip Width & Roundness:** Targeting the gluteus medius and outer sweep using machine abductors and cable kickbacks to enhance the hourglass silhouette.
+  * **Waist-to-Hip Ratio:** Balancing heavy lower body work with upper body lat development (V-taper illusion) and deep transverse abdominis core stability.
+  * **RPE (Rate of Perceived Exertion):** A scale from 1 to 10 measuring training intensity. 10 is failure; 8 leaves 2 reps in reserve.
   """)
 
   st.markdown("---")
@@ -1502,7 +1490,6 @@ elif selected_page == "🔒 Admin Dashboard":
   if admin_pin == "2026":
     st.success("Admin access granted!")
 
-    # --- USER-SPECIFIC RESET / DELETE SECTION ---
     st.markdown("---")
     st.markdown("### 👤 Particular User Account Reset & Deletion")
     st.write(
@@ -1547,7 +1534,6 @@ elif selected_page == "🔒 Admin Dashboard":
     except Exception as e:
       st.error(f"Error loading user accounts: {e}")
 
-    # --- DANGER ZONE: GLOBAL DATABASE RESET ---
     st.markdown("---")
     with st.expander("⚠️ Danger Zone: Global Database Reset", expanded=False):
       st.warning(
