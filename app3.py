@@ -96,7 +96,7 @@ def init_db():
   if "username" not in bw_cols:
     cursor.execute("ALTER TABLE body_weight ADD COLUMN username TEXT")
 
-  # 5. Profiles Table (Per-user settings with secure password protection)
+  # 5. Profiles Table (Per-user settings with secure password protection & goals)
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS profiles (
             username TEXT PRIMARY KEY,
@@ -104,17 +104,28 @@ def init_db():
             body_weight REAL,
             gender TEXT,
             age INTEGER,
-            height REAL
+            height REAL,
+            goal TEXT,
+            target_bw REAL,
+            target_bf REAL
         )
     """)
   cursor.execute("PRAGMA table_info(profiles)")
   profile_cols = [col[1] for col in cursor.fetchall()]
   if "password" not in profile_cols:
     cursor.execute("ALTER TABLE profiles ADD COLUMN password TEXT")
+  if "goal" not in profile_cols:
+    cursor.execute(
+        "ALTER TABLE profiles ADD COLUMN goal TEXT DEFAULT 'Body Recomposition'"
+    )
+  if "target_bw" not in profile_cols:
+    cursor.execute("ALTER TABLE profiles ADD COLUMN target_bw REAL DEFAULT 85.0")
+  if "target_bf" not in profile_cols:
+    cursor.execute("ALTER TABLE profiles ADD COLUMN target_bf REAL DEFAULT 22.0")
 
   cursor.execute("""
-        INSERT OR IGNORE INTO profiles (username, password, body_weight, gender, age, height)
-        VALUES ('Modiri', '2026', 88.0, 'Male', 25, 178.0)
+        INSERT OR IGNORE INTO profiles (username, password, body_weight, gender, age, height, goal, target_bw, target_bf)
+        VALUES ('Modiri', '2026', 88.0, 'Male', 25, 178.0, 'Body Recomposition (Fat Loss & Muscle Gain)', 85.0, 22.0)
     """)
 
   conn.commit()
@@ -192,7 +203,8 @@ def load_profile(username):
   conn = get_db_connection()
   try:
     df = pd.read_sql_query(
-        "SELECT body_weight, gender, age, height FROM profiles WHERE username = ?",
+        "SELECT body_weight, gender, age, height, goal, target_bw, target_bf"
+        " FROM profiles WHERE username = ?",
         conn,
         params=(username,),
     )
@@ -202,22 +214,33 @@ def load_profile(username):
           "gender": df["gender"].iloc[0],
           "age": int(df["age"].iloc[0]),
           "height": float(df["height"].iloc[0]),
+          "goal": (
+              df["goal"].iloc[0]
+              if pd.notna(df["goal"].iloc[0])
+              else "Body Recomposition"
+          ),
+          "target_bw": (
+              float(df["target_bw"].iloc[0])
+              if pd.notna(df["target_bw"].iloc[0])
+              else 85.0
+          ),
+          "target_bf": (
+              float(df["target_bf"].iloc[0])
+              if pd.notna(df["target_bf"].iloc[0])
+              else 22.0
+          ),
       }
   except Exception:
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT body_weight, gender, age, height FROM profiles WHERE username = ?",
-        (username,),
-    )
-    row = cursor.fetchone()
-    if row:
-      return {
-          "body_weight": row[0],
-          "gender": row[1],
-          "age": row[2],
-          "height": row[3],
-      }
-  return {"body_weight": 75.0, "gender": "Male", "age": 25, "height": 175.0}
+    pass
+  return {
+      "body_weight": 75.0,
+      "gender": "Male",
+      "age": 25,
+      "height": 175.0,
+      "goal": "Body Recomposition (Fat Loss & Muscle Gain)",
+      "target_bw": 85.0,
+      "target_bf": 22.0,
+  }
 
 
 def save_profile_db(username, profile_data):
@@ -226,7 +249,7 @@ def save_profile_db(username, profile_data):
   cursor.execute(
       """
         UPDATE profiles 
-        SET body_weight = ?, gender = ?, age = ?, height = ?
+        SET body_weight = ?, gender = ?, age = ?, height = ?, goal = ?, target_bw = ?, target_bf = ?
         WHERE username = ?
     """,
       (
@@ -234,6 +257,9 @@ def save_profile_db(username, profile_data):
           profile_data["gender"],
           profile_data["age"],
           profile_data["height"],
+          profile_data["goal"],
+          profile_data["target_bw"],
+          profile_data["target_bf"],
           username,
       ),
   )
@@ -257,6 +283,11 @@ if st.session_state.logged_in and st.session_state.username:
     st.session_state.gender = p_data.get("gender", "Male")
     st.session_state.age = p_data.get("age", 25)
     st.session_state.height = p_data.get("height", 175.0)
+    st.session_state.goal = p_data.get(
+        "goal", "Body Recomposition (Fat Loss & Muscle Gain)"
+    )
+    st.session_state.target_bw = p_data.get("target_bw", 85.0)
+    st.session_state.target_bf = p_data.get("target_bf", 22.0)
     st.session_state.current_loaded_user = st.session_state.username
 else:
   if "body_weight" not in st.session_state:
@@ -267,12 +298,18 @@ else:
     st.session_state.age = 25
   if "height" not in st.session_state:
     st.session_state.height = 175.0
+  if "goal" not in st.session_state:
+    st.session_state.goal = "Body Recomposition (Fat Loss & Muscle Gain)"
+  if "target_bw" not in st.session_state:
+    st.session_state.target_bw = 85.0
+  if "target_bf" not in st.session_state:
+    st.session_state.target_bf = 22.0
 
 st.set_page_config(
     page_title="Workout Master Suite", page_icon="💪", layout="centered"
 )
 
-# --- SIDEBAR FOR UNIQUE USER LOGIN & PROFILE SETTINGS ---
+# --- SIDEBAR FOR UNIQUE USER LOGIN & NESTED NAVIGATION ---
 with st.sidebar:
   st.markdown("### 🔐 Secure User Login / Register")
 
@@ -317,8 +354,8 @@ with st.sidebar:
           else:
             cursor.execute(
                 """
-                            INSERT INTO profiles (username, password, body_weight, gender, age, height)
-                            VALUES (?, ?, 75.0, 'Male', 25, 175.0)
+                            INSERT INTO profiles (username, password, body_weight, gender, age, height, goal, target_bw, target_bf)
+                            VALUES (?, ?, 75.0, 'Male', 25, 175.0, 'Body Recomposition (Fat Loss & Muscle Gain)', 85.0, 22.0)
                         """,
                 (u_clean, p_clean),
             )
@@ -338,6 +375,33 @@ with st.sidebar:
       st.session_state.username = None
       st.session_state.pop("current_loaded_user", None)
       st.rerun()
+
+    st.markdown("---")
+    st.markdown("### 🧭 Nested Navigation")
+
+    # Nested Selectbox & Radio Menu System
+    main_category = st.selectbox(
+        "Menu Category",
+        [
+            "📝 Logging & Workouts",
+            "📈 Tracking & Analytics",
+            "⚙️ System & Info",
+        ],
+    )
+
+    if main_category == "📝 Logging & Workouts":
+      selected_page = st.radio(
+          "Select Sub-Page", ["📝 Logger Form", "🎯 Goals & Workout Plan"]
+      )
+    elif main_category == "📈 Tracking & Analytics":
+      selected_page = st.radio(
+          "Select Sub-Page",
+          ["⚖️ Body Weight Tracker", "📈 Progress & Analytics"],
+      )
+    else:
+      selected_page = st.radio(
+          "Select Sub-Page", ["📖 Glossary & Feedback", "🔒 Admin Dashboard"]
+      )
 
     st.markdown("---")
     st.markdown("### ⚙️ Athlete Profile")
@@ -360,6 +424,9 @@ with st.sidebar:
           "gender": st.session_state.gender,
           "age": st.session_state.age,
           "height": st.session_state.height,
+          "goal": st.session_state.goal,
+          "target_bw": st.session_state.target_bw,
+          "target_bf": st.session_state.target_bf,
       }
       save_profile_db(st.session_state.username, updated_profile)
       st.success("Profile saved and synced securely!")
@@ -385,8 +452,8 @@ with st.sidebar:
           params=(st.session_state.username,),
       )
       df_exp_profile = pd.read_sql_query(
-          "SELECT username, body_weight, gender, age, height FROM profiles"
-          " WHERE username = ?",
+          "SELECT username, body_weight, gender, age, height, goal, target_bw,"
+          " target_bf FROM profiles WHERE username = ?",
           conn,
           params=(st.session_state.username,),
       )
@@ -439,18 +506,14 @@ with st.expander("🛡️ Data Policy & Privacy Information", expanded=False):
 
 st.markdown("---")
 
-# --- NAVIGATION TABS ---
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    [
-        "📝 Logger Form",
-        "⚖️ Body Weight Tracker",
-        "📈 Progress & Analytics",
-        "📖 Glossary & Definitions",
-        "💬 Feedback & Reviews",
-    ]
-)
+# Default page if not defined
+if "selected_page" not in locals() and "selected_page" not in globals():
+  selected_page = "📝 Logger Form"
 
-with tab1:
+# ==========================================
+# PAGE 1: LOGGER FORM
+# ==========================================
+if selected_page == "📝 Logger Form":
   st.subheader("Add Workout or Cardio Activity")
 
   log_type = st.radio(
@@ -468,9 +531,6 @@ with tab1:
             "Cable Lateral Raises",
             "DB Lateral Raises",
             "Tricep Pushdowns",
-            "Pull Ups",
-            "Chin Ups",
-            "Dips",
         ],
         "Upper Body B": [
             "Lat Pulldown",
@@ -479,10 +539,6 @@ with tab1:
             "Barbell Bent-Over Row",
             "Face Pulls",
             "Rear Delt Fly",
-            "Dumbbell Curls",
-            "Barbell Curls",
-            "Hammer Curls",
-            "Skull Crushers",
         ],
         "Lower Body A": [
             "Barbell Back Squat",
@@ -562,26 +618,6 @@ with tab1:
         exercise_name = st.text_input("Type Exercise Name", "New Exercise")
       else:
         exercise_name = exercise_choice
-
-    st.markdown("---")
-    with st.expander(
-        f"🧘 View Recommended Stretches for: **{routine_name}**", expanded=False
-    ):
-      if "Upper" in routine_name:
-        st.markdown("""
-                * **Pre-Workout Dynamic Stretches:** Arm circles, band pull-aparts, torso twists.
-                * **Post-Workout Static Stretches:** Cross-body shoulder stretch, overhead tricep stretch, doorway chest stretch.
-                """)
-      elif "Lower" in routine_name:
-        st.markdown("""
-                * **Pre-Workout Dynamic Stretches:** Leg swings, world's greatest stretch, bodyweight squat pries.
-                * **Post-Workout Static Stretches:** Standing quad stretch, seated hamstring stretch, figure-4 glute stretch.
-                """)
-      else:
-        st.markdown("""
-                * **Pre-Workout Dynamic Stretches:** Arm circles, leg swings, light bodyweight movements.
-                * **Post-Workout Static Stretches:** Full body static stretches focusing on worked muscle groups.
-                """)
 
     st.markdown("---")
     st.write("🏋️ **Set & Weight Progression (Pyramids / Weight Changes)**")
@@ -896,7 +932,323 @@ with tab1:
     else:
       st.info(f"No cardio entries logged for {st.session_state.username} yet.")
 
-with tab2:
+
+# ==========================================
+# PAGE 2: GOALS & WORKOUT PLAN
+# ==========================================
+elif selected_page == "🎯 Goals & Workout Plan":
+  st.subheader("🎯 Goals & Detailed Plan Logger")
+  st.write(
+      "Define your primary fitness objective, configure your custom training"
+      " days, and log completed sessions with precise metrics."
+  )
+
+  goal_options = [
+      "Body Recomposition (Fat Loss & Muscle Gain)",
+      "Hypertrophy / Muscle Building",
+      "Strength & Power Focus",
+      "Cardiovascular Endurance & Running",
+  ]
+
+  current_goal_idx = (
+      goal_options.index(st.session_state.goal)
+      if st.session_state.goal in goal_options
+      else 0
+  )
+
+  selected_goal = st.selectbox(
+      "What is your primary fitness goal?", goal_options, index=current_goal_idx
+  )
+
+  c_g1, c_g2 = st.columns(2)
+  with c_g1:
+    target_bw_input = st.number_input(
+        "Target Body Weight (kg)",
+        min_value=40.0,
+        max_value=200.0,
+        value=float(st.session_state.target_bw),
+        step=0.5,
+    )
+  with c_g2:
+    target_bf_input = st.number_input(
+        "Target Body Fat Percentage (%)",
+        min_value=5.0,
+        max_value=50.0,
+        value=float(st.session_state.target_bf),
+        step=0.5,
+    )
+
+  if st.button("Save Goal & Plan Settings"):
+    st.session_state.goal = selected_goal
+    st.session_state.target_bw = target_bw_input
+    st.session_state.target_bf = target_bf_input
+
+    updated_profile = {
+        "body_weight": st.session_state.body_weight,
+        "gender": st.session_state.gender,
+        "age": st.session_state.age,
+        "height": st.session_state.height,
+        "goal": st.session_state.goal,
+        "target_bw": st.session_state.target_bw,
+        "target_bf": st.session_state.target_bf,
+    }
+    save_profile_db(st.session_state.username, updated_profile)
+    st.success("Your goal and targets have been successfully saved!")
+
+  st.markdown("---")
+  st.markdown(f"### 📅 Custom Training Days & Schedule")
+  st.write(
+      "Select which days of the week you want to train and assign your daily"
+      " focus."
+  )
+
+  all_days = [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+  ]
+  default_days = ["Monday", "Tuesday", "Wednesday", "Friday", "Saturday"]
+
+  chosen_training_days = st.multiselect(
+      "Select the days of the week you want to train:",
+      all_days,
+      default=default_days,
+      key="chosen_training_days_multiselect",
+  )
+
+  possible_focuses = [
+      "Upper Body A (Chest, Shoulders, Triceps + Core)",
+      "Upper Body B (Back, Rear Delts, Biceps + Core)",
+      "Lower Body A (Squats, Leg Press, Extensions, Curls)",
+      "Lower Body B / Functional Strength",
+      "Running / Cardio Session (5km-10km)",
+      "Full Body Strength",
+      "Core & Mobility Work",
+  ]
+
+  plan_sessions = []
+  if chosen_training_days:
+    st.markdown("##### ⚙️ Assign Focus per Day:")
+    for day in chosen_training_days:
+      c_d1, c_d2 = st.columns([1, 2])
+      with c_d1:
+        st.markdown(f"**{day}**")
+      with c_d2:
+        # Default index heuristic
+        default_idx = (
+            0
+            if "Monday" in day
+            else (
+                4
+                if "Tuesday" in day or "Saturday" in day
+                else 2 if "Wednesday" in day else 1
+            )
+        )
+        if default_idx >= len(possible_focuses):
+          default_idx = 0
+        focus = st.selectbox(
+            f"Focus for {day}",
+            possible_focuses,
+            index=default_idx,
+            key=f"focus_{day}",
+        )
+        plan_sessions.append(f"{day}: {focus}")
+  else:
+    st.warning("Please select at least one training day of the week.")
+
+  st.markdown("---")
+  st.subheader(
+      "🚀 Log Plan Session with Detailed Metrics (Weights, Sets, RPE, Reps &"
+      " Distance)"
+  )
+  st.write(
+      "Select a session from your customized schedule below and input your"
+      " actual performance metrics to log it directly into your progress"
+      " tracker."
+  )
+
+  if plan_sessions:
+    chosen_session = st.selectbox(
+        "Select Planned Session to Log",
+        plan_sessions,
+        key="plan_chosen_session",
+    )
+    plan_log_date = st.date_input(
+        "Workout Date", datetime.today(), key="plan_log_date_picker"
+    )
+
+    is_cardio_session = (
+        "Running" in chosen_session
+        or "Run" in chosen_session
+        or "Cardio" in chosen_session
+    )
+
+    if is_cardio_session:
+      st.markdown("##### 🏃 Cardio Metrics")
+      c_dist = st.number_input(
+          "Distance (km)", min_value=0.1, max_value=50.0, value=5.0, step=0.1
+      )
+      c_dur = st.number_input(
+          "Duration (mins)", min_value=1, max_value=300, value=30, step=1
+      )
+      c_hr = st.number_input(
+          "Avg Heart Rate (bpm)", min_value=0, max_value=220, value=145
+      )
+    else:
+      st.markdown(
+          "##### 🏋️ Strength Metrics & Multi-Block Weight Progression"
+      )
+      num_blocks_plan = st.selectbox(
+          "How many different weight blocks?",
+          [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          index=0,
+          key="plan_num_blocks",
+      )
+
+      total_sets_p = 0
+      total_volume_p = 0
+      weight_parts_p = []
+      representative_reps_p = 10
+
+      for i in range(num_blocks_plan):
+        if num_blocks_plan > 1:
+          st.caption(f"Block {i+1}")
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+          s_p = st.number_input(
+              f"Sets ({i+1})",
+              min_value=1,
+              max_value=20,
+              value=2 if i > 0 else 4,
+              key=f"plan_sets_{i}",
+          )
+        with c2:
+          r_p = st.number_input(
+              f"Reps ({i+1})",
+              min_value=1,
+              max_value=100,
+              value=10,
+              key=f"plan_reps_{i}",
+          )
+        with c3:
+          w_p = st.number_input(
+              f"Weight kg ({i+1}) (0 for Bodyweight)",
+              min_value=0.0,
+              max_value=500.0,
+              value=50.0 + (i * 5.0),
+              step=2.5,
+              key=f"plan_weight_{i}",
+          )
+
+        total_sets_p += s_p
+        if i == 0:
+          representative_reps_p = r_p
+
+        total_volume_p += s_p * r_p * w_p
+        weight_parts_p.append(f"{w_p}kg")
+
+      if len(weight_parts_p) == 1:
+        weight_str_p = weight_parts_p[0]
+      elif len(weight_parts_p) == 2:
+        weight_str_p = f"{weight_parts_p[0]} & {weight_parts_p[1]}"
+      else:
+        weight_str_p = (
+            ", ".join(weight_parts_p[:-1]) + f" & {weight_parts_p[-1]}"
+        )
+
+      total_volume_str_p = f"{total_volume_p}kg"
+
+      st.info(
+          f"📊 **Calculated Summary:** Total Sets: **{total_sets_p}** | Combined"
+          f" Weight: **{weight_str_p}** | Total Volume: **{total_volume_p} kg**"
+      )
+
+      p_rpe = st.slider(
+          "RPE (Rate of Perceived Exertion 1-10)",
+          min_value=1.0,
+          max_value=10.0,
+          value=8.0,
+          step=0.5,
+          key="plan_rpe_slider",
+      )
+
+    if st.button(
+        "💾 Save Detailed Session to Progress Tracker", key="save_plan_btn"
+    ):
+      try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        date_str = plan_log_date.strftime("%Y/%m/%d")
+
+        if is_cardio_session:
+          if c_dist > 0:
+            p_mins = int(c_dur // c_dist)
+            p_secs = int(((c_dur / c_dist) - p_mins) * 60)
+            pace_str = f"{p_mins}m {p_secs}s / km"
+          else:
+            pace_str = "N/A"
+
+          cursor.execute(
+              """
+                  INSERT INTO cardio (username, date, activity, distance, duration, avg_hr, pace)
+                  VALUES (?, ?, ?, ?, ?, ?, ?)
+              """,
+              (
+                  st.session_state.username,
+                  date_str,
+                  chosen_session,
+                  float(c_dist),
+                  int(c_dur),
+                  int(c_hr),
+                  pace_str,
+              ),
+          )
+          st.success(
+              f"Successfully logged cardio session '{chosen_session}' ({c_dist}"
+              f" km) to your progress tracker!"
+          )
+        else:
+          cursor.execute(
+              """
+                  INSERT INTO workouts (username, date, routine, exercise, sets, reps, weight, total_volume, rpe)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              """,
+              (
+                  st.session_state.username,
+                  date_str,
+                  selected_goal,
+                  chosen_session,
+                  int(total_sets_p),
+                  int(representative_reps_p),
+                  weight_str_p,
+                  total_volume_str_p,
+                  float(p_rpe),
+              ),
+          )
+          st.success(
+              f"Successfully logged strength session '{chosen_session}'"
+              f" ({total_sets_p} sets, {weight_str_p}, RPE {p_rpe}) to your"
+              " progress tracker!"
+          )
+
+        conn.commit()
+        st.cache_data.clear()
+        st.rerun()
+      except Exception as e:
+        st.error(f"Error logging session: {e}")
+  else:
+    st.info("Please select at least one training day above to log sessions.")
+
+
+# ==========================================
+# PAGE 3: BODY WEIGHT TRACKER
+# ==========================================
+elif selected_page == "⚖️ Body Weight Tracker":
   st.subheader(f"⚖️ Body Weight Tracker ({st.session_state.username})")
   st.write("Log your body weight regularly to track progress toward your goals.")
 
@@ -1007,7 +1359,11 @@ with tab2:
   else:
     st.info(f"No body weight entries logged for {st.session_state.username} yet.")
 
-with tab3:
+
+# ==========================================
+# PAGE 4: PROGRESS & ANALYTICS
+# ==========================================
+elif selected_page == "📈 Progress & Analytics":
   st.subheader(f"📈 Training Analytics ({st.session_state.username})")
 
   an_tab1, an_tab2 = st.tabs(
@@ -1065,7 +1421,11 @@ with tab3:
     else:
       st.info("Log cardio sessions to view performance analytics!")
 
-with tab4:
+
+# ==========================================
+# PAGE 5: GLOSSARY & FEEDBACK
+# ==========================================
+elif selected_page == "📖 Glossary & Feedback":
   st.subheader("📖 Glossary & Definitions")
   st.markdown("""
   * **RPE (Rate of Perceived Exertion):** A scale from 1 to 10 measuring how intense a set felt. 10 is absolute failure, while 7-8 leaves 2-3 reps in reserve (RIR).
@@ -1074,7 +1434,7 @@ with tab4:
   * **Body Recomposition:** The simultaneous process of building muscle mass while reducing body fat percentage.
   """)
 
-with tab5:
+  st.markdown("---")
   st.subheader("💬 Feedback & Reviews")
   st.write(
       "Share your thoughts, feature requests, or bug reports regarding the"
@@ -1127,7 +1487,11 @@ with tab5:
       except Exception as e:
         st.error(f"Error submitting review: {e}")
 
-  st.markdown("---")
+
+# ==========================================
+# PAGE 6: ADMIN DASHBOARD
+# ==========================================
+elif selected_page == "🔒 Admin Dashboard":
   st.subheader("🔒 Admin Dashboard (Maker Only)")
   st.write(
       "Enter the Admin PIN to view incoming user reviews and manage accounts."
