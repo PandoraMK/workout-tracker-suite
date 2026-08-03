@@ -1427,7 +1427,7 @@ elif selected_page == "📖 Glossary & Feedback":
   with tab_glossary:
     st.markdown("""
 - **RPE (Rate of Perceived Exertion):** A scale from 1 to 10 measuring how difficult a set was (10 being absolute maximum effort).
-- **Volume:** Calculated as Sets $\times$ Reps $\times$ Weight, reflecting total work performed.
+- **Volume:** Calculated as Sets $\ttimes$ Reps $\ttimes$ Weight, reflecting total work performed.
 - **Hypertrophy:** Muscle building through mechanical tension and progressive overload.
 """)
 
