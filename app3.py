@@ -6,8 +6,22 @@ import pandas as pd
 import streamlit as st
 
 # --- APP VERSION & CHANGELOG CONFIGURATION ---
-CURRENT_VERSION = "v1.3.2"
+CURRENT_VERSION = "v1.3.3"
 CHANGELOG = {
+    "v1.3.3": [
+        (
+            "👥 Added a **Registered User Profiles** tracking table back to the"
+            " Admin Dashboard."
+        ),
+        (
+            "✏️ Full **Edit & Update** support maintained for both strength"
+            " workouts and cardio sessions."
+        ),
+        (
+            "⚡ Retained `st.fragment` isolation on the logger form for smooth"
+            " interaction."
+        ),
+    ],
     "v1.3.2": [
         (
             "✏️ Added full **Edit & Update** support for both strength"
@@ -1427,7 +1441,7 @@ elif selected_page == "📖 Glossary & Feedback":
   with tab_glossary:
     st.markdown("""
 - **RPE (Rate of Perceived Exertion):** A scale from 1 to 10 measuring how difficult a set was (10 being absolute maximum effort).
-- **Volume:** Calculated as Sets $\ttimes$ Reps $\ttimes$ Weight, reflecting total work performed.
+- **Volume:** Calculated as Sets $\times$ Reps $\times$ Weight, reflecting total work performed.
 - **Hypertrophy:** Muscle building through mechanical tension and progressive overload.
 """)
 
@@ -1478,13 +1492,32 @@ elif selected_page == "🔒 Admin Dashboard":
   if admin_pin == "2026":
     st.success("Admin access granted.")
 
-    col_adm1, col_adm2 = st.columns(2)
+    col_adm1, _ = st.columns(2)
     with col_adm1:
       if st.button("⚠️ Reset Entire Database", type="primary"):
         reset_database()
         st.success("Database completely reset!")
         st.rerun()
 
+    st.markdown("---")
+    st.markdown("### 👥 Registered Users / Profiles")
+    try:
+      conn = get_db_connection()
+      df_profiles = pd.read_sql_query(
+          "SELECT username AS Username, body_weight AS 'Body Weight (kg)',"
+          " gender AS Gender, age AS Age, height AS 'Height (cm)', goal AS"
+          " Goal, target_bw AS 'Target BW (kg)', target_bf AS 'Target BF (%)',"
+          " last_seen_version AS 'Last Version' FROM profiles",
+          conn,
+      )
+      if not df_profiles.empty:
+        st.dataframe(df_profiles, use_container_width=True)
+      else:
+        st.info("No user profiles found.")
+    except Exception as e:
+      st.error(f"Could not load user profiles: {e}")
+
+    st.markdown("---")
     st.markdown("### 📋 User Feedback Received")
     try:
       conn = get_db_connection()
