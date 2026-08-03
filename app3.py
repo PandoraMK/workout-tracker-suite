@@ -10,10 +10,6 @@ CURRENT_VERSION = "v1.3.3"
 CHANGELOG = {
     "v1.3.3": [
         (
-            "👥 Added a **Registered User Profiles** tracking table back to the"
-            " Admin Dashboard."
-        ),
-        (
             "✏️ Full **Edit & Update** support maintained for both strength"
             " workouts and cardio sessions."
         ),
