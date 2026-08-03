@@ -5,6 +5,26 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 
+# --- APP VERSION & CHANGELOG CONFIGURATION ---
+CURRENT_VERSION = "v1.3.0"
+CHANGELOG = {
+    "v1.3.0": [
+        "✨ Added automated 'What's New' changelog notification system for every update.",
+        (
+            "⚡ Wrapped workout and cardio inputs in `st.form` to eliminate"
+            " dimming and reloading lag."
+        ),
+        (
+            "🔐 Enhanced multi-user secure authentication and cloud database"
+            " synchronization."
+        ),
+    ],
+    "v1.2.0": [
+        "📊 Added direct Excel backup export for raw training data.",
+        "🎯 Introduced custom goal tracking and target body weight/fat metrics.",
+    ],
+}
+
 # --- DATABASE CONFIGURATION ---
 try:
   import libsql
@@ -107,7 +127,8 @@ def init_db():
             height REAL,
             goal TEXT,
             target_bw REAL,
-            target_bf REAL
+            target_bf REAL,
+            last_seen_version TEXT
         )
     """)
   cursor.execute("PRAGMA table_info(profiles)")
@@ -122,10 +143,14 @@ def init_db():
     cursor.execute("ALTER TABLE profiles ADD COLUMN target_bw REAL DEFAULT 85.0")
   if "target_bf" not in profile_cols:
     cursor.execute("ALTER TABLE profiles ADD COLUMN target_bf REAL DEFAULT 22.0")
+  if "last_seen_version" not in profile_cols:
+    cursor.execute(
+        "ALTER TABLE profiles ADD COLUMN last_seen_version TEXT DEFAULT 'v1.0.0'"
+    )
 
   cursor.execute("""
-        INSERT OR IGNORE INTO profiles (username, password, body_weight, gender, age, height, goal, target_bw, target_bf)
-        VALUES ('Modiri', '2026', 88.0, 'Male', 25, 178.0, 'Body Recomposition (Fat Loss & Muscle Gain)', 85.0, 22.0)
+        INSERT OR IGNORE INTO profiles (username, password, body_weight, gender, age, height, goal, target_bw, target_bf, last_seen_version)
+        VALUES ('Modiri', '2026', 88.0, 'Male', 25, 178.0, 'Body Recomposition (Fat Loss & Muscle Gain)', 85.0, 22.0, 'v1.0.0')
     """)
 
   conn.commit()
@@ -203,8 +228,8 @@ def load_profile(username):
   conn = get_db_connection()
   try:
     df = pd.read_sql_query(
-        "SELECT body_weight, gender, age, height, goal, target_bw, target_bf"
-        " FROM profiles WHERE username = ?",
+        "SELECT body_weight, gender, age, height, goal, target_bw, target_bf,"
+        " last_seen_version FROM profiles WHERE username = ?",
         conn,
         params=(username,),
     )
@@ -229,6 +254,11 @@ def load_profile(username):
               if pd.notna(df["target_bf"].iloc[0])
               else 22.0
           ),
+          "last_seen_version": (
+              df["last_seen_version"].iloc[0]
+              if pd.notna(df["last_seen_version"].iloc[0])
+              else "v1.0.0"
+          ),
       }
   except Exception:
     pass
@@ -240,6 +270,7 @@ def load_profile(username):
       "goal": "Body Recomposition (Fat Loss & Muscle Gain)",
       "target_bw": 85.0,
       "target_bf": 22.0,
+      "last_seen_version": "v1.0.0",
   }
 
 
@@ -249,7 +280,7 @@ def save_profile_db(username, profile_data):
   cursor.execute(
       """
         UPDATE profiles 
-        SET body_weight = ?, gender = ?, age = ?, height = ?, goal = ?, target_bw = ?, target_bf = ?
+        SET body_weight = ?, gender = ?, age = ?, height = ?, goal = ?, target_bw = ?, target_bf = ?, last_seen_version = ?
         WHERE username = ?
     """,
       (
@@ -260,6 +291,7 @@ def save_profile_db(username, profile_data):
           profile_data["goal"],
           profile_data["target_bw"],
           profile_data["target_bf"],
+          profile_data["last_seen_version"],
           username,
       ),
   )
@@ -272,6 +304,8 @@ if "username" not in st.session_state:
   st.session_state.username = None
 if "logged_in" not in st.session_state:
   st.session_state.logged_in = False
+if "whats_new_shown" not in st.session_state:
+  st.session_state.whats_new_shown = False
 
 if st.session_state.logged_in and st.session_state.username:
   if (
@@ -288,6 +322,9 @@ if st.session_state.logged_in and st.session_state.username:
     )
     st.session_state.target_bw = p_data.get("target_bw", 85.0)
     st.session_state.target_bf = p_data.get("target_bf", 22.0)
+    st.session_state.last_seen_version = p_data.get(
+        "last_seen_version", "v1.0.0"
+    )
     st.session_state.current_loaded_user = st.session_state.username
 else:
   if "body_weight" not in st.session_state:
@@ -304,10 +341,34 @@ else:
     st.session_state.target_bw = 85.0
   if "target_bf" not in st.session_state:
     st.session_state.target_bf = 22.0
+  if "last_seen_version" not in st.session_state:
+    st.session_state.last_seen_version = "v1.0.0"
 
 st.set_page_config(
     page_title="Workout Master Suite", page_icon="💪", layout="centered"
 )
+
+
+# --- WHAT'S NEW MODAL DIALOG ---
+@st.dialog(f"📢 What's New in {CURRENT_VERSION}!")
+def show_whats_new_dialog():
+  st.write(
+      f"We just pushed a new update! Here is what changed in"
+      f" **{CURRENT_VERSION}**:"
+  )
+  for bullet in CHANGELOG.get(CURRENT_VERSION, ["General performance updates."]):
+    st.markdown(f"- {bullet}")
+
+  st.markdown("---")
+  if st.button("Got it! Let's Train 🚀", type="primary"):
+    st.session_state.last_seen_version = CURRENT_VERSION
+    # Update DB
+    if st.session_state.logged_in and st.session_state.username:
+      p_data = load_profile(st.session_state.username)
+      p_data["last_seen_version"] = CURRENT_VERSION
+      save_profile_db(st.session_state.username, p_data)
+    st.rerun()
+
 
 # --- SIDEBAR FOR UNIQUE USER LOGIN & NESTED NAVIGATION ---
 with st.sidebar:
@@ -344,6 +405,9 @@ with st.sidebar:
             if stored_password == p_clean:
               st.session_state.username = u_clean
               st.session_state.logged_in = True
+              st.session_state.whats_new_shown = (
+                  False  # Reset for new session login
+              )
               st.success(f"Welcome back, {u_clean}!")
               st.rerun()
             else:
@@ -354,8 +418,8 @@ with st.sidebar:
           else:
             cursor.execute(
                 """
-                            INSERT INTO profiles (username, password, body_weight, gender, age, height, goal, target_bw, target_bf)
-                            VALUES (?, ?, 75.0, 'Male', 25, 175.0, 'Body Recomposition (Fat Loss & Muscle Gain)', 85.0, 22.0)
+                            INSERT INTO profiles (username, password, body_weight, gender, age, height, goal, target_bw, target_bf, last_seen_version)
+                            VALUES (?, ?, 75.0, 'Male', 25, 175.0, 'Body Recomposition (Fat Loss & Muscle Gain)', 85.0, 22.0, 'v1.0.0')
                         """,
                 (u_clean, p_clean),
             )
@@ -364,6 +428,7 @@ with st.sidebar:
 
             st.session_state.username = u_clean
             st.session_state.logged_in = True
+            st.session_state.whats_new_shown = False
             st.success(f"New account created and logged in as {u_clean}!")
             st.rerun()
         except Exception as e:
@@ -374,12 +439,12 @@ with st.sidebar:
       st.session_state.logged_in = False
       st.session_state.username = None
       st.session_state.pop("current_loaded_user", None)
+      st.session_state.whats_new_shown = False
       st.rerun()
 
     st.markdown("---")
     st.markdown("### 🧭 Nested Navigation")
 
-    # Nested Selectbox & Radio Menu System
     main_category = st.selectbox(
         "Menu Category",
         [
@@ -400,7 +465,8 @@ with st.sidebar:
       )
     else:
       selected_page = st.radio(
-          "Select Sub-Page", ["📖 Glossary & Feedback", "🔒 Admin Dashboard"]
+          "Select Sub-Page",
+          ["📖 Glossary & Feedback", "🔒 Admin Dashboard", "📢 What's New Log"],
       )
 
     st.markdown("---")
@@ -427,6 +493,7 @@ with st.sidebar:
           "goal": st.session_state.goal,
           "target_bw": st.session_state.target_bw,
           "target_bf": st.session_state.target_bf,
+          "last_seen_version": st.session_state.last_seen_version,
       }
       save_profile_db(st.session_state.username, updated_profile)
       st.success("Profile saved and synced securely!")
@@ -490,10 +557,18 @@ if not st.session_state.logged_in:
 
 current_user = st.session_state.username
 
+# --- TRIGGER WHAT'S NEW DIALOG ON LOGIN (ONLY ONCE PER SESSION) ---
+if (
+    not st.session_state.whats_new_shown
+    and st.session_state.last_seen_version != CURRENT_VERSION
+):
+  show_whats_new_dialog()
+  st.session_state.whats_new_shown = True
+
 st.title(f"💪 {current_user}'s Workout Master Suite")
 st.write(
     f"Private elite training tracker for **{current_user}** (BW:"
-    f" {st.session_state.body_weight}kg) with high-speed cloud sync."
+    f" {st.session_state.body_weight}kg) | Version: **{CURRENT_VERSION}**"
 )
 
 # --- MAIN SCREEN DATA POLICY & PRIVACY ---
@@ -630,7 +705,6 @@ if selected_page == "📝 Logger Form":
         "How many different weight blocks?", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], index=0
     )
 
-    # Wrapped inputs inside st.form to prevent dimming/reloading on every change
     with st.form("workout_form"):
       total_sets = 0
       total_volume = 0
@@ -941,7 +1015,6 @@ if selected_page == "📝 Logger Form":
     else:
       st.info(f"No cardio entries logged for {st.session_state.username} yet.")
 
-
 # ==========================================
 # PAGE 2: GOALS & WORKOUT PLAN
 # ==========================================
@@ -1000,6 +1073,29 @@ elif selected_page == "🎯 Goals & Workout Plan":
         "goal": st.session_state.goal,
         "target_bw": st.session_state.target_bw,
         "target_bf": st.session_state.target_bf,
+        "last_seen_version": st.session_state.last_seen_version,
     }
     save_profile_db(st.session_state.username, updated_profile)
     st.success("Goals updated successfully!")
+
+# ==========================================
+# PAGE 3: WHAT'S NEW LOG SUB-PAGE
+# ==========================================
+elif selected_page == "📢 What's New Log":
+  st.subheader("📢 App Changelog & Update History")
+  st.write(
+      "Review all recent updates, features, and fixes deployed across different"
+      " versions of your Workout Master Suite."
+  )
+
+  for ver, updates in CHANGELOG.items():
+    with st.expander(
+        f"Version {ver} {'(Current)' if ver == CURRENT_VERSION else ''}",
+        expanded=(ver == CURRENT_VERSION),
+    ):
+      for update in updates:
+        st.markdown(f"- {update}")
+
+  st.markdown("---")
+  if st.button("Manually Trigger What's New Popup"):
+    show_whats_new_dialog()
