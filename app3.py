@@ -6,9 +6,13 @@ import pandas as pd
 import streamlit as st
 
 # --- APP VERSION & CHANGELOG CONFIGURATION ---
-CURRENT_VERSION = "v1.3.1"
+CURRENT_VERSION = "v1.3.2"
 CHANGELOG = {
-    "v1.3.1": [
+    "v1.3.2": [
+        (
+            "✏️ Added full **Edit & Update** support for both strength"
+            " workouts and cardio sessions."
+        ),
         (
             "⚡ Implemented `st.fragment` isolation on the logger form to"
             " eliminate full-page dimming when changing weights, sets, or"
@@ -18,14 +22,13 @@ CHANGELOG = {
             "✨ Added automated 'What's New' changelog notification system for"
             " every update."
         ),
+    ],
+    "v1.3.1": [
         (
             "🔐 Enhanced multi-user secure authentication and cloud database"
             " synchronization."
         ),
-    ],
-    "v1.2.0": [
         "📊 Added direct Excel backup export for raw training data.",
-        "🎯 Introduced custom goal tracking and target body weight/fat metrics.",
     ],
 }
 
@@ -938,6 +941,114 @@ if selected_page == "📝 Logger Form":
     if not df_log.empty:
       st.dataframe(df_log.drop(columns=["id"]).head(50), use_container_width=True)
 
+      # --- EDIT WORKOUT ENTRY EXPANDER ---
+      with st.expander("✏️ Edit Workout Entries", expanded=False):
+        workout_edit_options = dict(
+            zip(
+                df_log["id"],
+                df_log["Date"]
+                + " | "
+                + df_log["Routine / Focus"]
+                + " | "
+                + df_log["Exercise"]
+                + " ("
+                + df_log["Weight (kg)"]
+                + ")",
+            )
+        )
+        selected_workout_id = st.selectbox(
+            "Select workout entry to edit",
+            options=list(workout_edit_options.keys()),
+            format_func=lambda x: workout_edit_options[x],
+            key="edit_workout_sel",
+        )
+
+        if selected_workout_id:
+          w_row = df_log[df_log["id"] == selected_workout_id].iloc[0]
+          with st.form("edit_workout_form"):
+            e_date = st.date_input(
+                "Workout Date",
+                datetime.strptime(w_row["Date"], "%Y/%m/%d").date(),
+                key="edit_w_date",
+            )
+            e_routine = st.text_input(
+                "Routine / Focus",
+                value=w_row["Routine / Focus"],
+                key="edit_w_routine",
+            )
+            e_exercise = st.text_input(
+                "Exercise Name", value=w_row["Exercise"], key="edit_w_exercise"
+            )
+
+            ec1, ec2, ec3 = st.columns(3)
+            with ec1:
+              e_sets = st.number_input(
+                  "Sets",
+                  min_value=1,
+                  max_value=50,
+                  value=int(w_row["Sets"]),
+                  key="edit_w_sets",
+              )
+            with ec2:
+              e_reps = st.number_input(
+                  "Reps",
+                  min_value=1,
+                  max_value=200,
+                  value=int(w_row["Reps"]),
+                  key="edit_w_reps",
+              )
+            with ec3:
+              e_weight = st.text_input(
+                  "Weight (e.g. 40kg or 40kg & 45kg)",
+                  value=str(w_row["Weight (kg)"]),
+                  key="edit_w_weight",
+              )
+
+            ec4, _ = st.columns(2)
+            with ec4:
+              e_rpe = st.slider(
+                  "RPE (1-10)",
+                  1.0,
+                  10.0,
+                  float(w_row["RPE (1-10)"]),
+                  0.5,
+                  key="edit_w_rpe",
+              )
+
+            submitted_edit_w = st.form_submit_button(
+                "Update Workout Entry", type="primary"
+            )
+            if submitted_edit_w:
+              try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                date_str = e_date.strftime("%Y/%m/%d")
+                cursor.execute(
+                    """
+                                    UPDATE workouts 
+                                    SET date = ?, routine = ?, exercise = ?, sets = ?, reps = ?, weight = ?, rpe = ?
+                                    WHERE id = ? AND username = ?
+                                """,
+                    (
+                        date_str,
+                        e_routine,
+                        e_exercise,
+                        int(e_sets),
+                        int(e_reps),
+                        e_weight,
+                        float(e_rpe),
+                        selected_workout_id,
+                        st.session_state.username,
+                    ),
+                )
+                conn.commit()
+                st.cache_data.clear()
+                st.success("Workout entry updated successfully!")
+                st.rerun()
+              except Exception as e:
+                st.error(f"Error updating workout entry: {e}")
+
+      # --- DELETE WORKOUT ENTRY EXPANDER ---
       with st.expander("🗑️ Manage & Delete Workout Entries", expanded=False):
         st.write("Select specific workout entry IDs to delete.")
         workout_options = dict(
@@ -997,6 +1108,111 @@ if selected_page == "📝 Logger Form":
           df_cardio_log.drop(columns=["id"]).head(50), use_container_width=True
       )
 
+      # --- EDIT CARDIO ENTRY EXPANDER ---
+      with st.expander("✏️ Edit Cardio Entries", expanded=False):
+        cardio_edit_options = dict(
+            zip(
+                df_cardio_log["id"],
+                df_cardio_log["Date"]
+                + " | "
+                + df_cardio_log["Activity"]
+                + " ("
+                + df_cardio_log["Distance (km)"].astype(str)
+                + "km)",
+            )
+        )
+        selected_cardio_id = st.selectbox(
+            "Select cardio entry to edit",
+            options=list(cardio_edit_options.keys()),
+            format_func=lambda x: cardio_edit_options[x],
+            key="edit_cardio_sel",
+        )
+
+        if selected_cardio_id:
+          c_row = df_cardio_log[df_cardio_log["id"] == selected_cardio_id].iloc[
+              0
+          ]
+          with st.form("edit_cardio_form"):
+            ec_date = st.date_input(
+                "Cardio Date",
+                datetime.strptime(c_row["Date"], "%Y/%m/%d").date(),
+                key="edit_c_date",
+            )
+            ec_activity = st.text_input(
+                "Activity Name",
+                value=c_row["Activity"],
+                key="edit_c_activity",
+            )
+
+            cc1, cc2, cc3 = st.columns(3)
+            with cc1:
+              ec_dist = st.number_input(
+                  "Distance (km)",
+                  min_value=0.0,
+                  max_value=200.0,
+                  value=float(c_row["Distance (km)"]),
+                  step=0.1,
+                  key="edit_c_dist",
+              )
+            with cc2:
+              ec_dur = st.number_input(
+                  "Duration (mins)",
+                  min_value=1,
+                  max_value=1000,
+                  value=int(c_row["Duration (mins)"]),
+                  key="edit_c_dur",
+              )
+            with cc3:
+              ec_hr = st.number_input(
+                  "Avg HR (bpm)",
+                  min_value=0,
+                  max_value=250,
+                  value=int(c_row["Avg HR (bpm)"]),
+                  key="edit_c_hr",
+              )
+
+            submitted_edit_c = st.form_submit_button(
+                "Update Cardio Entry", type="primary"
+            )
+            if submitted_edit_c:
+              try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                c_date_str = ec_date.strftime("%Y/%m/%d")
+
+                # Recalculate pace automatically
+                if ec_dist > 0:
+                  p_mins = int(ec_dur // ec_dist)
+                  p_secs = int(((ec_dur / ec_dist) - p_mins) * 60)
+                  ec_pace = f"{p_mins}m {p_secs}s / km"
+                else:
+                  ec_pace = "N/A"
+
+                cursor.execute(
+                    """
+                                    UPDATE cardio 
+                                    SET date = ?, activity = ?, distance = ?, duration = ?, avg_hr = ?, pace = ?
+                                    WHERE id = ? AND username = ?
+                                """,
+                    (
+                        c_date_str,
+                        ec_activity,
+                        float(ec_dist),
+                        int(ec_dur),
+                        int(ec_hr),
+                        ec_pace,
+                        selected_cardio_id,
+                        st.session_state.username,
+                    ),
+                )
+                conn.commit()
+                st.cache_data.clear()
+                st.success("Cardio entry updated successfully!")
+                st.rerun()
+              except Exception as e:
+                st.error(f"Error updating cardio entry: {e}")
+
+      # --- DELETE CARDIO ENTRY EXPANDER ---
       with st.expander("🗑️ Manage & Delete Cardio Entries", expanded=False):
         st.write("Select specific cardio entry IDs to delete.")
         cardio_options = dict(
