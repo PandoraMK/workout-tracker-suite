@@ -6,13 +6,17 @@ import pandas as pd
 import streamlit as st
 
 # --- APP VERSION & CHANGELOG CONFIGURATION ---
-CURRENT_VERSION = "v1.3.0"
+CURRENT_VERSION = "v1.3.1"
 CHANGELOG = {
-    "v1.3.0": [
-        "✨ Added automated 'What's New' changelog notification system for every update.",
+    "v1.3.1": [
         (
-            "⚡ Wrapped workout and cardio inputs in `st.form` to eliminate"
-            " dimming and reloading lag."
+            "⚡ Implemented `st.fragment` isolation on the logger form to"
+            " eliminate full-page dimming when changing weights, sets, or"
+            " routines."
+        ),
+        (
+            "✨ Added automated 'What's New' changelog notification system for"
+            " every update."
         ),
         (
             "🔐 Enhanced multi-user secure authentication and cloud database"
@@ -210,20 +214,6 @@ def reset_database():
   init_db()
 
 
-def delete_user_data(username_to_delete):
-  conn = get_db_connection()
-  cursor = conn.cursor()
-  cursor.execute("DELETE FROM workouts WHERE username = ?", (username_to_delete,))
-  cursor.execute("DELETE FROM cardio WHERE username = ?", (username_to_delete,))
-  cursor.execute(
-      "DELETE FROM body_weight WHERE username = ?", (username_to_delete,)
-  )
-  cursor.execute("DELETE FROM profiles WHERE username = ?", (username_to_delete,))
-  cursor.execute("DELETE FROM reviews WHERE tester_name = ?", (username_to_delete,))
-  conn.commit()
-  st.cache_data.clear()
-
-
 def load_profile(username):
   conn = get_db_connection()
   try:
@@ -362,7 +352,6 @@ def show_whats_new_dialog():
   st.markdown("---")
   if st.button("Got it! Let's Train 🚀", type="primary"):
     st.session_state.last_seen_version = CURRENT_VERSION
-    # Update DB
     if st.session_state.logged_in and st.session_state.username:
       p_data = load_profile(st.session_state.username)
       p_data["last_seen_version"] = CURRENT_VERSION
@@ -405,9 +394,7 @@ with st.sidebar:
             if stored_password == p_clean:
               st.session_state.username = u_clean
               st.session_state.logged_in = True
-              st.session_state.whats_new_shown = (
-                  False  # Reset for new session login
-              )
+              st.session_state.whats_new_shown = False
               st.success(f"Welcome back, {u_clean}!")
               st.rerun()
             else:
@@ -581,319 +568,363 @@ with st.expander("🛡️ Data Policy & Privacy Information", expanded=False):
 
 st.markdown("---")
 
-# Default page if not defined
 if "selected_page" not in locals() and "selected_page" not in globals():
   selected_page = "📝 Logger Form"
 
 # ==========================================
-# PAGE 1: LOGGER FORM
+# PAGE 1: LOGGER FORM (ISOLATED VIA ST.FRAGMENT)
 # ==========================================
 if selected_page == "📝 Logger Form":
   st.subheader("Add Workout or Cardio Activity")
 
-  log_type = st.radio(
-      "Select Activity Type to Log",
-      ["🏋️ Strength & Bodyweight Workout", "🏃 Cardio Session"],
-      horizontal=True,
-  )
 
-  if log_type == "🏋️ Strength & Bodyweight Workout":
-    routine_exercises_map = {
-        "Upper Body A": [
-            "Barbell Bench Press",
-            "Incline DB Press",
-            "Overhead Shoulder Press",
-            "Cable Lateral Raises",
-            "DB Lateral Raises",
-            "Tricep Pushdowns",
-        ],
-        "Upper Body B": [
-            "Lat Pulldown",
-            "Seated Cable Row",
-            "Neutral Grip Pull-Ups",
-            "Barbell Bent-Over Row",
-            "Face Pulls",
-            "Rear Delt Fly",
-        ],
-        "Lower Body A": [
-            "Barbell Back Squat",
-            "Seated Leg Press",
-            "Leg Extensions",
-            "Machine Leg Curl",
-            "Romanian Deadlift",
-            "Standing Calf Raises",
-            "Seated Calf Raises",
-        ],
-        "Lower Body B": [
-            "Bulgarian Split Squat",
-            "Goblet Squat",
-            "Seated Leg Press",
-            "Leg Extensions",
-            "Machine Leg Curl",
-            "Romanian Deadlift",
-            "Standing Calf Raises",
-        ],
-        "Core & Abs": [
-            "Abdominal Crunch Machines",
-            "Cable Crunches",
-            "Hanging Leg Raises",
-            "Plank Hold",
-            "Russian Twists",
-            "Decline Sit-Ups",
-        ],
-        "Cardio Equipment": [
-            "Keiser Bicycle",
-            "Arc Trainer",
-            "Treadmill Run",
-            "Assault Bike",
-            "Rowing Machine",
-        ],
-        "Home Workouts": [
-            "Standard Push-Ups",
-            "Pike Push-Ups",
-            "Bodyweight Squats",
-            "Chair Bulgarian Split Squats",
-            "Walking Lunges",
-            "Glute Bridges",
-            "Chair Dips",
-            "Superman Back Extensions",
-            "Plank Hold",
-        ],
-        "Full Body": [
-            "Barbell Back Squat",
-            "Barbell Bench Press",
-            "Lat Pulldown",
-            "Seated Leg Press",
-            "Leg Extensions",
-            "Standing Calf Raises",
-        ],
-    }
+  @st.fragment
+  def render_logger_fragment():
+    log_type = st.radio(
+        "Select Activity Type to Log",
+        ["🏋️ Strength & Bodyweight Workout", "🏃 Cardio Session"],
+        key="log_type_selector",
+        horizontal=True,
+    )
 
-    col1, col2 = st.columns(2)
-    with col1:
-      routine_options = list(routine_exercises_map.keys()) + ["Custom"]
-      routine = st.selectbox("Routine / Focus", routine_options)
+    if log_type == "🏋️ Strength & Bodyweight Workout":
+      routine_exercises_map = {
+          "Upper Body A": [
+              "Barbell Bench Press",
+              "Incline DB Press",
+              "Overhead Shoulder Press",
+              "Cable Lateral Raises",
+              "DB Lateral Raises",
+              "Tricep Pushdowns",
+          ],
+          "Upper Body B": [
+              "Lat Pulldown",
+              "Seated Cable Row",
+              "Neutral Grip Pull-Ups",
+              "Barbell Bent-Over Row",
+              "Face Pulls",
+              "Rear Delt Fly",
+          ],
+          "Lower Body A": [
+              "Barbell Back Squat",
+              "Seated Leg Press",
+              "Leg Extensions",
+              "Machine Leg Curl",
+              "Romanian Deadlift",
+              "Standing Calf Raises",
+              "Seated Calf Raises",
+          ],
+          "Lower Body B": [
+              "Bulgarian Split Squat",
+              "Goblet Squat",
+              "Seated Leg Press",
+              "Leg Extensions",
+              "Machine Leg Curl",
+              "Romanian Deadlift",
+              "Standing Calf Raises",
+          ],
+          "Core & Abs": [
+              "Abdominal Crunch Machines",
+              "Cable Crunches",
+              "Hanging Leg Raises",
+              "Plank Hold",
+              "Russian Twists",
+              "Decline Sit-Ups",
+          ],
+          "Cardio Equipment": [
+              "Keiser Bicycle",
+              "Arc Trainer",
+              "Treadmill Run",
+              "Assault Bike",
+              "Rowing Machine",
+          ],
+          "Home Workouts": [
+              "Standard Push-Ups",
+              "Pike Push-Ups",
+              "Bodyweight Squats",
+              "Chair Bulgarian Split Squats",
+              "Walking Lunges",
+              "Glute Bridges",
+              "Chair Dips",
+              "Superman Back Extensions",
+              "Plank Hold",
+          ],
+          "Full Body": [
+              "Barbell Back Squat",
+              "Barbell Bench Press",
+              "Lat Pulldown",
+              "Seated Leg Press",
+              "Leg Extensions",
+              "Standing Calf Raises",
+          ],
+      }
 
-      if routine == "Custom":
-        routine_name = st.text_input("Enter custom routine name", "Custom Focus")
-        available_exercises = [
-            "Barbell Back Squat",
-            "Barbell Bench Press",
-            "Lat Pulldown",
-        ]
-      else:
-        routine_name = routine
-        available_exercises = routine_exercises_map.get(routine, [])
+      col1, col2 = st.columns(2)
+      with col1:
+        routine_options = list(routine_exercises_map.keys()) + ["Custom"]
+        routine = st.selectbox(
+            "Routine / Focus", routine_options, key="routine_sel"
+        )
 
-    with col2:
-      exercise_choice = st.selectbox(
-          "Select Exercise", available_exercises + ["Other (Type Below)"]
+        if routine == "Custom":
+          routine_name = st.text_input(
+              "Enter custom routine name",
+              "Custom Focus",
+              key="custom_routine_name",
+          )
+          available_exercises = [
+              "Barbell Back Squat",
+              "Barbell Bench Press",
+              "Lat Pulldown",
+          ]
+        else:
+          routine_name = routine
+          available_exercises = routine_exercises_map.get(routine, [])
+
+      with col2:
+        exercise_choice = st.selectbox(
+            "Select Exercise",
+            available_exercises + ["Other (Type Below)"],
+            key="ex_sel",
+        )
+        if exercise_choice == "Other (Type Below)":
+          exercise_name = st.text_input(
+              "Type Exercise Name", "New Exercise", key="custom_ex_name"
+          )
+        else:
+          exercise_name = exercise_choice
+
+      st.markdown("---")
+      st.write("🏋️ **Set & Weight Progression (Pyramids / Weight Changes)**")
+      st.info(
+          "💡 **Pro Tip:** Remember to take at least **2 minutes of rest**"
+          " between working sets for optimal ATP recovery and muscle growth!"
       )
-      if exercise_choice == "Other (Type Below)":
-        exercise_name = st.text_input("Type Exercise Name", "New Exercise")
+
+      num_blocks = st.selectbox(
+          "How many different weight blocks?",
+          [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          index=0,
+          key="num_blocks_sel",
+      )
+
+      with st.form("workout_form"):
+        total_sets = 0
+        total_volume = 0
+        weight_parts = []
+        representative_reps = 8
+
+        for i in range(num_blocks):
+          if num_blocks > 1:
+            st.caption(f"Block {i+1}")
+
+          c1, c2, c3 = st.columns(3)
+          with c1:
+            s = st.number_input(
+                f"Sets ({i+1})",
+                min_value=1,
+                max_value=20,
+                value=2 if i > 0 else 4,
+                key=f"sets_{i}",
+            )
+          with c2:
+            r = st.number_input(
+                f"Reps ({i+1})",
+                min_value=1,
+                max_value=100,
+                value=12 if routine == "Home Workouts" else 8,
+                key=f"reps_{i}",
+            )
+          with c3:
+            w = st.number_input(
+                f"Weight kg ({i+1}) (0 for Bodyweight)",
+                min_value=0.0,
+                max_value=500.0,
+                value=0.0 if routine == "Home Workouts" else 40.0 + (i * 5.0),
+                step=2.5,
+                key=f"weight_{i}",
+            )
+
+          total_sets += s
+          if i == 0:
+            representative_reps = r
+
+          total_volume += s * r * w
+          weight_parts.append(f"{w}kg")
+
+        if len(weight_parts) == 1:
+          weight_str = weight_parts[0]
+        elif len(weight_parts) == 2:
+          weight_str = f"{weight_parts[0]} & {weight_parts[1]}"
+        else:
+          weight_str = ", ".join(weight_parts[:-1]) + f" & {weight_parts[-1]}"
+
+        total_volume_str = f"{total_volume}kg"
+
+        st.info(
+            f"📊 **Calculated Summary:** Total Sets: **{total_sets}** |"
+            f" Combined Weight: **{weight_str}** | Total Volume: **{total_volume}"
+            " kg**"
+        )
+
+        st.markdown("---")
+        col_rpe, col_date = st.columns(2)
+        with col_rpe:
+          rpe = st.slider(
+              "RPE (1-10)",
+              min_value=1.0,
+              max_value=10.0,
+              value=8.0,
+              step=0.5,
+              key="rpe_slider",
+          )
+        with col_date:
+          log_date = st.date_input(
+              "Workout Date", datetime.today(), key="lift_date"
+          )
+
+        submitted = st.form_submit_button("Save Workout Entry", type="primary")
+
+        if submitted:
+          try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            date_str = log_date.strftime("%Y/%m/%d")
+            cursor.execute(
+                """
+                            INSERT INTO workouts (username, date, routine, exercise, sets, reps, weight, total_volume, rpe)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                (
+                    st.session_state.username,
+                    date_str,
+                    routine_name,
+                    exercise_name,
+                    total_sets,
+                    representative_reps,
+                    weight_str,
+                    total_volume_str,
+                    rpe,
+                ),
+            )
+            conn.commit()
+            st.cache_data.clear()
+
+            st.success(
+                f"Successfully logged {exercise_name} ({weight_str}) under"
+                f" {routine_name} for {st.session_state.username}!"
+            )
+            st.rerun()
+          except Exception as e:
+            st.error(f"Error saving workout entry: {e}")
+
+    else:  # Cardio Session
+      st.write("🏃 **Cardio Metrics**")
+      cardio_activity_options = [
+          "Outside Running",
+          "Indoor Treadmill Run",
+          "Keiser Bicycle",
+          "Arc Trainer",
+          "Assault Bike",
+          "Rowing Machine",
+          "Other",
+      ]
+      cardio_act = st.selectbox(
+          "Cardio Activity", cardio_activity_options, key="cardio_act_sel"
+      )
+      if cardio_act == "Other":
+        cardio_activity_name = st.text_input(
+            "Type Cardio Activity", "Custom Cardio", key="custom_cardio_name"
+        )
       else:
-        exercise_name = exercise_choice
+        cardio_activity_name = cardio_act
 
-    st.markdown("---")
-    st.write("🏋️ **Set & Weight Progression (Pyramids / Weight Changes)**")
-    st.info(
-        "💡 **Pro Tip:** Remember to take at least **2 minutes of rest** between"
-        " working sets for optimal ATP recovery and muscle growth!"
-    )
-
-    num_blocks = st.selectbox(
-        "How many different weight blocks?", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], index=0
-    )
-
-    with st.form("workout_form"):
-      total_sets = 0
-      total_volume = 0
-      weight_parts = []
-      representative_reps = 8
-
-      for i in range(num_blocks):
-        if num_blocks > 1:
-          st.caption(f"Block {i+1}")
-
+      with st.form("cardio_form"):
         c1, c2, c3 = st.columns(3)
         with c1:
-          s = st.number_input(
-              f"Sets ({i+1})",
-              min_value=1,
-              max_value=20,
-              value=2 if i > 0 else 4,
-              key=f"sets_{i}",
+          cardio_dist = st.number_input(
+              "Distance (km)",
+              min_value=0.1,
+              max_value=100.0,
+              value=5.0,
+              step=0.1,
+              key="cardio_dist_input",
           )
         with c2:
-          r = st.number_input(
-              f"Reps ({i+1})",
+          cardio_time = st.number_input(
+              "Duration (mins)",
               min_value=1,
-              max_value=100,
-              value=12 if routine == "Home Workouts" else 8,
-              key=f"reps_{i}",
+              max_value=600,
+              value=30,
+              step=1,
+              key="cardio_time_input",
           )
         with c3:
-          w = st.number_input(
-              f"Weight kg ({i+1}) (0 for Bodyweight)",
-              min_value=0.0,
-              max_value=500.0,
-              value=0.0 if routine == "Home Workouts" else 40.0 + (i * 5.0),
-              step=2.5,
-              key=f"weight_{i}",
+          cardio_hr = st.number_input(
+              "Avg Heart Rate (bpm)",
+              min_value=0,
+              max_value=220,
+              value=145,
+              step=1,
+              key="cardio_hr_input",
           )
 
-        total_sets += s
-        if i == 0:
-          representative_reps = r
+        if cardio_dist > 0:
+          pace_mins = int(cardio_time // cardio_dist)
+          pace_secs = int(((cardio_time / cardio_dist) - pace_mins) * 60)
+          pace_str = f"{pace_mins}m {pace_secs}s / km"
+        else:
+          pace_str = "N/A"
 
-        total_volume += s * r * w
-        weight_parts.append(f"{w}kg")
-
-      if len(weight_parts) == 1:
-        weight_str = weight_parts[0]
-      elif len(weight_parts) == 2:
-        weight_str = f"{weight_parts[0]} & {weight_parts[1]}"
-      else:
-        weight_str = ", ".join(weight_parts[:-1]) + f" & {weight_parts[-1]}"
-
-      total_volume_str = f"{total_volume}kg"
-
-      st.info(
-          f"📊 **Calculated Summary:** Total Sets: **{total_sets}** | Combined"
-          f" Weight: **{weight_str}** | Total Volume: **{total_volume} kg**"
-      )
-
-      st.markdown("---")
-      col_rpe, col_date = st.columns(2)
-      with col_rpe:
-        rpe = st.slider(
-            "RPE (1-10)", min_value=1.0, max_value=10.0, value=8.0, step=0.5
-        )
-      with col_date:
-        log_date = st.date_input("Workout Date", datetime.today(), key="lift_date")
-
-      submitted = st.form_submit_button("Save Workout Entry", type="primary")
-
-      if submitted:
-        try:
-          conn = get_db_connection()
-          cursor = conn.cursor()
-          date_str = log_date.strftime("%Y/%m/%d")
-          cursor.execute(
-              """
-                INSERT INTO workouts (username, date, routine, exercise, sets, reps, weight, total_volume, rpe)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-              (
-                  st.session_state.username,
-                  date_str,
-                  routine_name,
-                  exercise_name,
-                  total_sets,
-                  representative_reps,
-                  weight_str,
-                  total_volume_str,
-                  rpe,
-              ),
-          )
-          conn.commit()
-          st.cache_data.clear()
-
-          st.success(
-              f"Successfully logged {exercise_name} ({weight_str}) under"
-              f" {routine_name} for {st.session_state.username}!"
-          )
-          st.rerun()
-        except Exception as e:
-          st.error(f"Error saving workout entry: {e}")
-
-  else:  # Cardio Session
-    st.write("🏃 **Cardio Metrics**")
-    cardio_activity_options = [
-        "Outside Running",
-        "Indoor Treadmill Run",
-        "Keiser Bicycle",
-        "Arc Trainer",
-        "Assault Bike",
-        "Rowing Machine",
-        "Other",
-    ]
-    cardio_act = st.selectbox("Cardio Activity", cardio_activity_options)
-    if cardio_act == "Other":
-      cardio_activity_name = st.text_input(
-          "Type Cardio Activity", "Custom Cardio"
-      )
-    else:
-      cardio_activity_name = cardio_act
-
-    with st.form("cardio_form"):
-      c1, c2, c3 = st.columns(3)
-      with c1:
-        cardio_dist = st.number_input(
-            "Distance (km)", min_value=0.1, max_value=100.0, value=5.0, step=0.1
-        )
-      with c2:
-        cardio_time = st.number_input(
-            "Duration (mins)", min_value=1, max_value=600, value=30, step=1
-        )
-      with c3:
-        cardio_hr = st.number_input(
-            "Avg Heart Rate (bpm)", min_value=0, max_value=220, value=145, step=1
+        st.info(
+            f"📊 **Cardio Summary:** Activity: **{cardio_activity_name}** |"
+            f" Distance: **{cardio_dist} km** | Duration: **{cardio_time}"
+            f" mins** | Pace: **{pace_str}** | HR:"
+            f" **{cardio_hr if cardio_hr > 0 else 'N/A'} bpm**"
         )
 
-      if cardio_dist > 0:
-        pace_mins = int(cardio_time // cardio_dist)
-        pace_secs = int(((cardio_time / cardio_dist) - pace_mins) * 60)
-        pace_str = f"{pace_mins}m {pace_secs}s / km"
-      else:
-        pace_str = "N/A"
+        st.markdown("---")
+        cardio_date = st.date_input(
+            "Cardio Date", datetime.today(), key="cardio_date_input"
+        )
 
-      st.info(
-          f"📊 **Cardio Summary:** Activity: **{cardio_activity_name}** |"
-          f" Distance: **{cardio_dist} km** | Duration: **{cardio_time} mins** |"
-          f" Pace: **{pace_str}** | HR: **{cardio_hr if cardio_hr > 0 else 'N/A'}"
-          " bpm**"
-      )
+        cardio_submitted = st.form_submit_button(
+            "Save Cardio Entry", type="primary"
+        )
 
-      st.markdown("---")
-      cardio_date = st.date_input(
-          "Cardio Date", datetime.today(), key="cardio_date_input"
-      )
+        if cardio_submitted:
+          try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            date_str = cardio_date.strftime("%Y/%m/%d")
+            cursor.execute(
+                """
+                            INSERT INTO cardio (username, date, activity, distance, duration, avg_hr, pace)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                (
+                    st.session_state.username,
+                    date_str,
+                    cardio_activity_name,
+                    float(cardio_dist),
+                    int(cardio_time),
+                    int(cardio_hr),
+                    pace_str,
+                ),
+            )
+            conn.commit()
+            st.cache_data.clear()
 
-      cardio_submitted = st.form_submit_button(
-          "Save Cardio Entry", type="primary"
-      )
+            st.success(
+                f"Successfully logged {cardio_activity_name} for"
+                f" {st.session_state.username}!"
+            )
+            st.rerun()
+          except Exception as e:
+            st.error(f"Error saving cardio entry: {e}")
 
-      if cardio_submitted:
-        try:
-          conn = get_db_connection()
-          cursor = conn.cursor()
-          date_str = cardio_date.strftime("%Y/%m/%d")
-          cursor.execute(
-              """
-                INSERT INTO cardio (username, date, activity, distance, duration, avg_hr, pace)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-              (
-                  st.session_state.username,
-                  date_str,
-                  cardio_activity_name,
-                  float(cardio_dist),
-                  int(cardio_time),
-                  int(cardio_hr),
-                  pace_str,
-              ),
-          )
-          conn.commit()
-          st.cache_data.clear()
-
-          st.success(
-              f"Successfully logged {cardio_activity_name} for"
-              f" {st.session_state.username}!"
-          )
-          st.rerun()
-        except Exception as e:
-          st.error(f"Error saving cardio entry: {e}")
+  # Call the isolated fragment function
+  render_logger_fragment()
 
   st.markdown("---")
   st.subheader(f"📊 My Live Logs ({st.session_state.username})")
@@ -1079,7 +1110,180 @@ elif selected_page == "🎯 Goals & Workout Plan":
     st.success("Goals updated successfully!")
 
 # ==========================================
-# PAGE 3: WHAT'S NEW LOG SUB-PAGE
+# PAGE 3: BODY WEIGHT TRACKER
+# ==========================================
+elif selected_page == "⚖️ Body Weight Tracker":
+  st.subheader("⚖️ Body Weight Tracker")
+  st.write("Log your daily or weekly body weight to track progress over time.")
+
+  with st.form("bw_form"):
+    c1, c2 = st.columns(2)
+    with c1:
+      logged_bw = st.number_input(
+          "Body Weight (kg)",
+          min_value=30.0,
+          max_value=250.0,
+          value=float(st.session_state.body_weight),
+          step=0.1,
+      )
+    with c2:
+      bw_date = st.date_input("Date", datetime.today(), key="bw_date_input")
+
+    bw_notes = st.text_input("Notes (Optional)", "")
+    submitted_bw = st.form_submit_button("Save Body Weight", type="primary")
+
+    if submitted_bw:
+      try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        date_str = bw_date.strftime("%Y/%m/%d")
+        cursor.execute(
+            """
+                    INSERT INTO body_weight (username, date, body_weight, notes)
+                    VALUES (?, ?, ?, ?)
+                """,
+            (st.session_state.username, date_str, logged_bw, bw_notes),
+        )
+        conn.commit()
+        st.cache_data.clear()
+        st.success(
+            f"Successfully recorded body weight ({logged_bw} kg) for"
+            f" {st.session_state.username}!"
+        )
+        st.rerun()
+      except Exception as e:
+        st.error(f"Error saving body weight: {e}")
+
+  st.markdown("---")
+  df_bw = fetch_body_weight(st.session_state.username)
+  if not df_bw.empty:
+    st.markdown("### 📈 Body Weight History")
+    st.dataframe(df_bw.drop(columns=["id"]), use_container_width=True)
+
+    chart_data = df_bw.set_index("Date")[["Body Weight (kg)"]]
+    st.line_chart(chart_data)
+  else:
+    st.info(
+        f"No body weight records found for {st.session_state.username} yet."
+    )
+
+# ==========================================
+# PAGE 4: PROGRESS & ANALYTICS
+# ==========================================
+elif selected_page == "📈 Progress & Analytics":
+  st.subheader("📈 Progress & Analytics Dashboard")
+  st.write(
+      "Analyze your overall training volume, strength progression, and workout"
+      " frequency."
+  )
+
+  df_workouts = fetch_workouts(st.session_state.username)
+  df_cardio = fetch_cardio(st.session_state.username)
+
+  c1, c2, c3 = st.columns(3)
+  with c1:
+    st.metric(
+        "Total Workouts Logged",
+        len(df_workouts) if not df_workouts.empty else 0,
+    )
+  with c2:
+    st.metric(
+        "Total Cardio Sessions", len(df_cardio) if not df_cardio.empty else 0
+    )
+  with c3:
+    st.metric("Primary Goal", st.session_state.goal.split("(")[0])
+
+  st.markdown("---")
+  if not df_workouts.empty:
+    st.markdown("### 🏋️ Strength Workouts Overview")
+    st.dataframe(df_workouts.head(15), use_container_width=True)
+  else:
+    st.info("Log some strength workouts to view progress analytics.")
+
+# ==========================================
+# PAGE 5: GLOSSARY & FEEDBACK
+# ==========================================
+elif selected_page == "📖 Glossary & Feedback":
+  st.subheader("📖 Fitness Glossary & User Feedback")
+
+  tab_glossary, tab_feedback = st.tabs(["📚 Glossary", "💬 Send Feedback"])
+
+  with tab_glossary:
+    st.markdown("""
+- **RPE (Rate of Perceived Exertion):** A scale from 1 to 10 measuring how difficult a set was (10 being absolute maximum effort).
+- **Volume:** Calculated as Sets $\times$ Reps $\times$ Weight, reflecting total work performed.
+- **Hypertrophy:** Muscle building through mechanical tension and progressive overload.
+""")
+
+  with tab_feedback:
+    with st.form("feedback_form"):
+      rating = st.slider("Rating (1-5 Stars)", 1, 5, 5)
+      category = st.selectbox(
+          "Category", ["Bug Report", "Feature Request", "General Comment"]
+      )
+      message = st.text_area("Your Feedback / Message")
+      submitted_feedback = st.form_submit_button(
+          "Submit Feedback", type="primary"
+      )
+
+      if submitted_feedback:
+        try:
+          conn = get_db_connection()
+          cursor = conn.cursor()
+          today_str = datetime.today().strftime("%Y/%m/%d")
+          time_str = datetime.now().strftime("%H:%M:%S")
+          cursor.execute(
+              """
+                        INSERT INTO reviews (date, time, tester_name, rating, category, message)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+              (
+                  today_str,
+                  time_str,
+                  st.session_state.username,
+                  rating,
+                  category,
+                  message,
+              ),
+          )
+          conn.commit()
+          st.success("Thank you! Your feedback has been submitted successfully.")
+        except Exception as e:
+          st.error(f"Error submitting feedback: {e}")
+
+# ==========================================
+# PAGE 6: ADMIN DASHBOARD
+# ==========================================
+elif selected_page == "🔒 Admin Dashboard":
+  st.subheader("🔒 Admin Dashboard")
+  st.write("Manage application data, reset databases, or review user feedback.")
+
+  admin_pin = st.text_input("Enter Admin PIN", type="password")
+  if admin_pin == "2026":
+    st.success("Admin access granted.")
+
+    col_adm1, col_adm2 = st.columns(2)
+    with col_adm1:
+      if st.button("⚠️ Reset Entire Database", type="primary"):
+        reset_database()
+        st.success("Database completely reset!")
+        st.rerun()
+
+    st.markdown("### 📋 User Feedback Received")
+    try:
+      conn = get_db_connection()
+      df_reviews = pd.read_sql_query("SELECT * FROM reviews", conn)
+      if not df_reviews.empty:
+        st.dataframe(df_reviews, use_container_width=True)
+      else:
+        st.info("No feedback submissions yet.")
+    except Exception as e:
+      st.error(f"Could not load reviews: {e}")
+  else:
+    st.info("Please enter the correct admin PIN to unlock dashboard controls.")
+
+# ==========================================
+# PAGE 7: WHAT'S NEW LOG SUB-PAGE
 # ==========================================
 elif selected_page == "📢 What's New Log":
   st.subheader("📢 App Changelog & Update History")
