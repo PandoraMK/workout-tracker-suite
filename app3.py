@@ -630,104 +630,108 @@ if selected_page == "📝 Logger Form":
         "How many different weight blocks?", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], index=0
     )
 
-    total_sets = 0
-    total_volume = 0
-    weight_parts = []
-    representative_reps = 8
+    # Wrapped inputs inside st.form to prevent dimming/reloading on every change
+    with st.form("workout_form"):
+      total_sets = 0
+      total_volume = 0
+      weight_parts = []
+      representative_reps = 8
 
-    for i in range(num_blocks):
-      if num_blocks > 1:
-        st.caption(f"Block {i+1}")
+      for i in range(num_blocks):
+        if num_blocks > 1:
+          st.caption(f"Block {i+1}")
 
-      c1, c2, c3 = st.columns(3)
-      with c1:
-        s = st.number_input(
-            f"Sets ({i+1})",
-            min_value=1,
-            max_value=20,
-            value=2 if i > 0 else 4,
-            key=f"sets_{i}",
-        )
-      with c2:
-        r = st.number_input(
-            f"Reps ({i+1})",
-            min_value=1,
-            max_value=100,
-            value=12 if routine == "Home Workouts" else 8,
-            key=f"reps_{i}",
-        )
-      with c3:
-        w = st.number_input(
-            f"Weight kg ({i+1}) (0 for Bodyweight)",
-            min_value=0.0,
-            max_value=500.0,
-            value=0.0 if routine == "Home Workouts" else 40.0 + (i * 5.0),
-            step=2.5,
-            key=f"weight_{i}",
-        )
+        c1, c2, c3 = st.columns(3)
+        with c1:
+          s = st.number_input(
+              f"Sets ({i+1})",
+              min_value=1,
+              max_value=20,
+              value=2 if i > 0 else 4,
+              key=f"sets_{i}",
+          )
+        with c2:
+          r = st.number_input(
+              f"Reps ({i+1})",
+              min_value=1,
+              max_value=100,
+              value=12 if routine == "Home Workouts" else 8,
+              key=f"reps_{i}",
+          )
+        with c3:
+          w = st.number_input(
+              f"Weight kg ({i+1}) (0 for Bodyweight)",
+              min_value=0.0,
+              max_value=500.0,
+              value=0.0 if routine == "Home Workouts" else 40.0 + (i * 5.0),
+              step=2.5,
+              key=f"weight_{i}",
+          )
 
-      total_sets += s
-      if i == 0:
-        representative_reps = r
+        total_sets += s
+        if i == 0:
+          representative_reps = r
 
-      total_volume += s * r * w
-      weight_parts.append(f"{w}kg")
+        total_volume += s * r * w
+        weight_parts.append(f"{w}kg")
 
-    if len(weight_parts) == 1:
-      weight_str = weight_parts[0]
-    elif len(weight_parts) == 2:
-      weight_str = f"{weight_parts[0]} & {weight_parts[1]}"
-    else:
-      weight_str = ", ".join(weight_parts[:-1]) + f" & {weight_parts[-1]}"
+      if len(weight_parts) == 1:
+        weight_str = weight_parts[0]
+      elif len(weight_parts) == 2:
+        weight_str = f"{weight_parts[0]} & {weight_parts[1]}"
+      else:
+        weight_str = ", ".join(weight_parts[:-1]) + f" & {weight_parts[-1]}"
 
-    total_volume_str = f"{total_volume}kg"
+      total_volume_str = f"{total_volume}kg"
 
-    st.info(
-        f"📊 **Calculated Summary:** Total Sets: **{total_sets}** | Combined"
-        f" Weight: **{weight_str}** | Total Volume: **{total_volume} kg**"
-    )
-
-    st.markdown("---")
-    col_rpe, col_date = st.columns(2)
-    with col_rpe:
-      rpe = st.slider(
-          "RPE (1-10)", min_value=1.0, max_value=10.0, value=8.0, step=0.5
+      st.info(
+          f"📊 **Calculated Summary:** Total Sets: **{total_sets}** | Combined"
+          f" Weight: **{weight_str}** | Total Volume: **{total_volume} kg**"
       )
-    with col_date:
-      log_date = st.date_input("Workout Date", datetime.today(), key="lift_date")
 
-    if st.button("Save Workout Entry"):
-      try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        date_str = log_date.strftime("%Y/%m/%d")
-        cursor.execute(
-            """
+      st.markdown("---")
+      col_rpe, col_date = st.columns(2)
+      with col_rpe:
+        rpe = st.slider(
+            "RPE (1-10)", min_value=1.0, max_value=10.0, value=8.0, step=0.5
+        )
+      with col_date:
+        log_date = st.date_input("Workout Date", datetime.today(), key="lift_date")
+
+      submitted = st.form_submit_button("Save Workout Entry", type="primary")
+
+      if submitted:
+        try:
+          conn = get_db_connection()
+          cursor = conn.cursor()
+          date_str = log_date.strftime("%Y/%m/%d")
+          cursor.execute(
+              """
                 INSERT INTO workouts (username, date, routine, exercise, sets, reps, weight, total_volume, rpe)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                st.session_state.username,
-                date_str,
-                routine_name,
-                exercise_name,
-                total_sets,
-                representative_reps,
-                weight_str,
-                total_volume_str,
-                rpe,
-            ),
-        )
-        conn.commit()
-        st.cache_data.clear()
+              (
+                  st.session_state.username,
+                  date_str,
+                  routine_name,
+                  exercise_name,
+                  total_sets,
+                  representative_reps,
+                  weight_str,
+                  total_volume_str,
+                  rpe,
+              ),
+          )
+          conn.commit()
+          st.cache_data.clear()
 
-        st.success(
-            f"Successfully logged {exercise_name} ({weight_str}) under"
-            f" {routine_name} for {st.session_state.username}!"
-        )
-        st.rerun()
-      except Exception as e:
-        st.error(f"Error saving workout entry: {e}")
+          st.success(
+              f"Successfully logged {exercise_name} ({weight_str}) under"
+              f" {routine_name} for {st.session_state.username}!"
+          )
+          st.rerun()
+        except Exception as e:
+          st.error(f"Error saving workout entry: {e}")
 
   else:  # Cardio Session
     st.write("🏃 **Cardio Metrics**")
@@ -748,69 +752,74 @@ if selected_page == "📝 Logger Form":
     else:
       cardio_activity_name = cardio_act
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-      cardio_dist = st.number_input(
-          "Distance (km)", min_value=0.1, max_value=100.0, value=5.0, step=0.1
+    with st.form("cardio_form"):
+      c1, c2, c3 = st.columns(3)
+      with c1:
+        cardio_dist = st.number_input(
+            "Distance (km)", min_value=0.1, max_value=100.0, value=5.0, step=0.1
+        )
+      with c2:
+        cardio_time = st.number_input(
+            "Duration (mins)", min_value=1, max_value=600, value=30, step=1
+        )
+      with c3:
+        cardio_hr = st.number_input(
+            "Avg Heart Rate (bpm)", min_value=0, max_value=220, value=145, step=1
+        )
+
+      if cardio_dist > 0:
+        pace_mins = int(cardio_time // cardio_dist)
+        pace_secs = int(((cardio_time / cardio_dist) - pace_mins) * 60)
+        pace_str = f"{pace_mins}m {pace_secs}s / km"
+      else:
+        pace_str = "N/A"
+
+      st.info(
+          f"📊 **Cardio Summary:** Activity: **{cardio_activity_name}** |"
+          f" Distance: **{cardio_dist} km** | Duration: **{cardio_time} mins** |"
+          f" Pace: **{pace_str}** | HR: **{cardio_hr if cardio_hr > 0 else 'N/A'}"
+          " bpm**"
       )
-    with c2:
-      cardio_time = st.number_input(
-          "Duration (mins)", min_value=1, max_value=600, value=30, step=1
-      )
-    with c3:
-      cardio_hr = st.number_input(
-          "Avg Heart Rate (bpm)", min_value=0, max_value=220, value=145, step=1
+
+      st.markdown("---")
+      cardio_date = st.date_input(
+          "Cardio Date", datetime.today(), key="cardio_date_input"
       )
 
-    if cardio_dist > 0:
-      pace_mins = int(cardio_time // cardio_dist)
-      pace_secs = int(((cardio_time / cardio_dist) - pace_mins) * 60)
-      pace_str = f"{pace_mins}m {pace_secs}s / km"
-    else:
-      pace_str = "N/A"
+      cardio_submitted = st.form_submit_button(
+          "Save Cardio Entry", type="primary"
+      )
 
-    st.info(
-        f"📊 **Cardio Summary:** Activity: **{cardio_activity_name}** |"
-        f" Distance: **{cardio_dist} km** | Duration: **{cardio_time} mins** |"
-        f" Pace: **{pace_str}** | HR: **{cardio_hr if cardio_hr > 0 else 'N/A'}"
-        " bpm**"
-    )
-
-    st.markdown("---")
-    cardio_date = st.date_input(
-        "Cardio Date", datetime.today(), key="cardio_date_input"
-    )
-
-    if st.button("Save Cardio Entry"):
-      try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        date_str = cardio_date.strftime("%Y/%m/%d")
-        cursor.execute(
-            """
+      if cardio_submitted:
+        try:
+          conn = get_db_connection()
+          cursor = conn.cursor()
+          date_str = cardio_date.strftime("%Y/%m/%d")
+          cursor.execute(
+              """
                 INSERT INTO cardio (username, date, activity, distance, duration, avg_hr, pace)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                st.session_state.username,
-                date_str,
-                cardio_activity_name,
-                float(cardio_dist),
-                int(cardio_time),
-                int(cardio_hr),
-                pace_str,
-            ),
-        )
-        conn.commit()
-        st.cache_data.clear()
+              (
+                  st.session_state.username,
+                  date_str,
+                  cardio_activity_name,
+                  float(cardio_dist),
+                  int(cardio_time),
+                  int(cardio_hr),
+                  pace_str,
+              ),
+          )
+          conn.commit()
+          st.cache_data.clear()
 
-        st.success(
-            f"Successfully logged {cardio_activity_name} for"
-            f" {st.session_state.username}!"
-        )
-        st.rerun()
-      except Exception as e:
-        st.error(f"Error saving cardio entry: {e}")
+          st.success(
+              f"Successfully logged {cardio_activity_name} for"
+              f" {st.session_state.username}!"
+          )
+          st.rerun()
+        except Exception as e:
+          st.error(f"Error saving cardio entry: {e}")
 
   st.markdown("---")
   st.subheader(f"📊 My Live Logs ({st.session_state.username})")
@@ -993,600 +1002,4 @@ elif selected_page == "🎯 Goals & Workout Plan":
         "target_bf": st.session_state.target_bf,
     }
     save_profile_db(st.session_state.username, updated_profile)
-    st.success("Your goal and targets have been successfully saved!")
-
-  st.markdown("---")
-  st.markdown(f"### 📅 Custom Training Days & Schedule")
-  st.write(
-      "Select which days of the week you want to train and assign your daily"
-      " focus."
-  )
-
-  all_days = [
-      "Monday",
-      "Tuesday",
-      "Wednesday",
-      "Thursday",
-      "Friday",
-      "Saturday",
-      "Sunday",
-  ]
-  default_days = ["Monday", "Tuesday", "Wednesday", "Friday", "Saturday"]
-
-  chosen_training_days = st.multiselect(
-      "Select the days of the week you want to train:",
-      all_days,
-      default=default_days,
-      key="chosen_training_days_multiselect",
-  )
-
-  possible_focuses = [
-      "Upper Body A (Chest, Shoulders, Triceps + Core)",
-      "Upper Body B (Back, Rear Delts, Biceps + Core)",
-      "Lower Body A (Squats, Leg Press, Extensions, Curls)",
-      "Lower Body B / Functional Strength",
-      "Running / Cardio Session (5km-10km)",
-      "Full Body Strength",
-      "Core & Mobility Work",
-  ]
-
-  plan_sessions = []
-  if chosen_training_days:
-    st.markdown("##### ⚙️ Assign Focus per Day:")
-    for day in chosen_training_days:
-      c_d1, c_d2 = st.columns([1, 2])
-      with c_d1:
-        st.markdown(f"**{day}**")
-      with c_d2:
-        # Default index heuristic
-        default_idx = (
-            0
-            if "Monday" in day
-            else (
-                4
-                if "Tuesday" in day or "Saturday" in day
-                else 2 if "Wednesday" in day else 1
-            )
-        )
-        if default_idx >= len(possible_focuses):
-          default_idx = 0
-        focus = st.selectbox(
-            f"Focus for {day}",
-            possible_focuses,
-            index=default_idx,
-            key=f"focus_{day}",
-        )
-        plan_sessions.append(f"{day}: {focus}")
-  else:
-    st.warning("Please select at least one training day of the week.")
-
-  st.markdown("---")
-  st.subheader(
-      "🚀 Log Plan Session with Detailed Metrics (Weights, Sets, RPE, Reps &"
-      " Distance)"
-  )
-  st.write(
-      "Select a session from your customized schedule below and input your"
-      " actual performance metrics to log it directly into your progress"
-      " tracker."
-  )
-
-  if plan_sessions:
-    chosen_session = st.selectbox(
-        "Select Planned Session to Log",
-        plan_sessions,
-        key="plan_chosen_session",
-    )
-    plan_log_date = st.date_input(
-        "Workout Date", datetime.today(), key="plan_log_date_picker"
-    )
-
-    is_cardio_session = (
-        "Running" in chosen_session
-        or "Run" in chosen_session
-        or "Cardio" in chosen_session
-    )
-
-    if is_cardio_session:
-      st.markdown("##### 🏃 Cardio Metrics")
-      c_dist = st.number_input(
-          "Distance (km)", min_value=0.1, max_value=50.0, value=5.0, step=0.1
-      )
-      c_dur = st.number_input(
-          "Duration (mins)", min_value=1, max_value=300, value=30, step=1
-      )
-      c_hr = st.number_input(
-          "Avg Heart Rate (bpm)", min_value=0, max_value=220, value=145
-      )
-    else:
-      st.markdown(
-          "##### 🏋️ Strength Metrics & Multi-Block Weight Progression"
-      )
-      num_blocks_plan = st.selectbox(
-          "How many different weight blocks?",
-          [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-          index=0,
-          key="plan_num_blocks",
-      )
-
-      total_sets_p = 0
-      total_volume_p = 0
-      weight_parts_p = []
-      representative_reps_p = 10
-
-      for i in range(num_blocks_plan):
-        if num_blocks_plan > 1:
-          st.caption(f"Block {i+1}")
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-          s_p = st.number_input(
-              f"Sets ({i+1})",
-              min_value=1,
-              max_value=20,
-              value=2 if i > 0 else 4,
-              key=f"plan_sets_{i}",
-          )
-        with c2:
-          r_p = st.number_input(
-              f"Reps ({i+1})",
-              min_value=1,
-              max_value=100,
-              value=10,
-              key=f"plan_reps_{i}",
-          )
-        with c3:
-          w_p = st.number_input(
-              f"Weight kg ({i+1}) (0 for Bodyweight)",
-              min_value=0.0,
-              max_value=500.0,
-              value=50.0 + (i * 5.0),
-              step=2.5,
-              key=f"plan_weight_{i}",
-          )
-
-        total_sets_p += s_p
-        if i == 0:
-          representative_reps_p = r_p
-
-        total_volume_p += s_p * r_p * w_p
-        weight_parts_p.append(f"{w_p}kg")
-
-      if len(weight_parts_p) == 1:
-        weight_str_p = weight_parts_p[0]
-      elif len(weight_parts_p) == 2:
-        weight_str_p = f"{weight_parts_p[0]} & {weight_parts_p[1]}"
-      else:
-        weight_str_p = (
-            ", ".join(weight_parts_p[:-1]) + f" & {weight_parts_p[-1]}"
-        )
-
-      total_volume_str_p = f"{total_volume_p}kg"
-
-      st.info(
-          f"📊 **Calculated Summary:** Total Sets: **{total_sets_p}** | Combined"
-          f" Weight: **{weight_str_p}** | Total Volume: **{total_volume_p} kg**"
-      )
-
-      p_rpe = st.slider(
-          "RPE (Rate of Perceived Exertion 1-10)",
-          min_value=1.0,
-          max_value=10.0,
-          value=8.0,
-          step=0.5,
-          key="plan_rpe_slider",
-      )
-
-    if st.button(
-        "💾 Save Detailed Session to Progress Tracker", key="save_plan_btn"
-    ):
-      try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        date_str = plan_log_date.strftime("%Y/%m/%d")
-
-        if is_cardio_session:
-          if c_dist > 0:
-            p_mins = int(c_dur // c_dist)
-            p_secs = int(((c_dur / c_dist) - p_mins) * 60)
-            pace_str = f"{p_mins}m {p_secs}s / km"
-          else:
-            pace_str = "N/A"
-
-          cursor.execute(
-              """
-                  INSERT INTO cardio (username, date, activity, distance, duration, avg_hr, pace)
-                  VALUES (?, ?, ?, ?, ?, ?, ?)
-              """,
-              (
-                  st.session_state.username,
-                  date_str,
-                  chosen_session,
-                  float(c_dist),
-                  int(c_dur),
-                  int(c_hr),
-                  pace_str,
-              ),
-          )
-          st.success(
-              f"Successfully logged cardio session '{chosen_session}' ({c_dist}"
-              f" km) to your progress tracker!"
-          )
-        else:
-          cursor.execute(
-              """
-                  INSERT INTO workouts (username, date, routine, exercise, sets, reps, weight, total_volume, rpe)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-              """,
-              (
-                  st.session_state.username,
-                  date_str,
-                  selected_goal,
-                  chosen_session,
-                  int(total_sets_p),
-                  int(representative_reps_p),
-                  weight_str_p,
-                  total_volume_str_p,
-                  float(p_rpe),
-              ),
-          )
-          st.success(
-              f"Successfully logged strength session '{chosen_session}'"
-              f" ({total_sets_p} sets, {weight_str_p}, RPE {p_rpe}) to your"
-              " progress tracker!"
-          )
-
-        conn.commit()
-        st.cache_data.clear()
-        st.rerun()
-      except Exception as e:
-        st.error(f"Error logging session: {e}")
-  else:
-    st.info("Please select at least one training day above to log sessions.")
-
-
-# ==========================================
-# PAGE 3: BODY WEIGHT TRACKER
-# ==========================================
-elif selected_page == "⚖️ Body Weight Tracker":
-  st.subheader(f"⚖️ Body Weight Tracker ({st.session_state.username})")
-  st.write("Log your body weight regularly to track progress toward your goals.")
-
-  with st.form("body_weight_form"):
-    c1, c2 = st.columns(2)
-    with c1:
-      logged_bw = st.number_input(
-          "Body Weight (kg)",
-          min_value=30.0,
-          max_value=250.0,
-          value=float(st.session_state.body_weight),
-          step=0.1,
-      )
-    with c2:
-      logged_weight_date = st.date_input(
-          "Date", datetime.today(), key="bw_date"
-      )
-
-    bw_notes = st.text_input(
-        "Notes (e.g., Morning weigh-in, post-run)",
-        placeholder="Optional notes",
-        key="bw_notes",
-    )
-    submit_bw = st.form_submit_button("Save Body Weight Entry")
-
-    if submit_bw:
-      try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-                    INSERT INTO body_weight (username, date, body_weight, notes)
-                    VALUES (?, ?, ?, ?)
-                """,
-            (
-                st.session_state.username,
-                logged_weight_date.strftime("%Y/%m/%d"),
-                logged_bw,
-                bw_notes,
-            ),
-        )
-        conn.commit()
-        st.cache_data.clear()
-
-        st.success(
-            f"Successfully recorded body weight: {logged_bw} kg saved for"
-            f" {st.session_state.username}!"
-        )
-      except Exception as e:
-        st.error(f"Error saving body weight: {e}")
-
-  st.markdown("---")
-  st.subheader("📈 Body Weight Trend & Management")
-  df_bw = fetch_body_weight(st.session_state.username)
-  if not df_bw.empty:
-    st.dataframe(df_bw.drop(columns=["id"]), use_container_width=True)
-    chart_bw_data = df_bw[["Date", "Body Weight (kg)"]].dropna()
-    if not chart_bw_data.empty:
-      st.markdown("### Weight Progression Chart")
-      st.line_chart(chart_bw_data.set_index("Date"), use_container_width=True)
-
-    with st.expander("🗑️ Manage & Delete Body Weight Entries", expanded=False):
-      st.write("Select specific body weight entry IDs to delete.")
-      bw_options = dict(
-          zip(
-              df_bw["id"],
-              df_bw["Date"]
-              + " - "
-              + df_bw["Body Weight (kg)"].astype(str)
-              + "kg ("
-              + df_bw["Notes"].fillna("No notes")
-              + ")",
-          )
-      )
-      selected_bw_to_delete = st.multiselect(
-          "Choose body weight entries to remove",
-          options=list(bw_options.keys()),
-          format_func=lambda x: bw_options[x],
-          key="del_bw_multiselect",
-      )
-
-      if st.button(
-          "Delete Selected Body Weight Entries", type="primary", key="btn_del_bw"
-      ):
-        if selected_bw_to_delete:
-          try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.executemany(
-                "DELETE FROM body_weight WHERE id = ? AND username = ?",
-                [
-                    (wid, st.session_state.username)
-                    for wid in selected_bw_to_delete
-                ],
-            )
-            conn.commit()
-            st.cache_data.clear()
-
-            st.success(
-                f"Successfully deleted {len(selected_bw_to_delete)} body weight"
-                " entry/entries!"
-            )
-            st.rerun()
-          except Exception as e:
-            st.error(f"Error deleting body weight entries: {e}")
-        else:
-          st.warning("Please select at least one entry to delete.")
-  else:
-    st.info(f"No body weight entries logged for {st.session_state.username} yet.")
-
-
-# ==========================================
-# PAGE 4: PROGRESS & ANALYTICS
-# ==========================================
-elif selected_page == "📈 Progress & Analytics":
-  st.subheader(f"📈 Training Analytics ({st.session_state.username})")
-
-  an_tab1, an_tab2 = st.tabs(
-      ["🏋️ Strength Analytics", "🏃 Cardio Performance Analytics"]
-  )
-
-  with an_tab1:
-    df_analytics = fetch_workouts(st.session_state.username)
-    if not df_analytics.empty and "Total Volume (kg)" in df_analytics.columns:
-      df_analytics["Clean_Volume"] = (
-          df_analytics["Total Volume (kg)"]
-          .astype(str)
-          .str.replace("kg", "", regex=False)
-      )
-      df_analytics["Clean_Volume"] = pd.to_numeric(
-          df_analytics["Clean_Volume"], errors="coerce"
-      ).fillna(0)
-
-      st.markdown("### Total Lift Volume Over Time")
-      chart_data = df_analytics[["Date", "Clean_Volume"]].dropna()
-      if not chart_data.empty:
-        st.line_chart(chart_data.set_index("Date"), use_container_width=True)
-      else:
-        st.info("Log a few workouts to see your progression chart!")
-
-      st.markdown("---")
-      st.markdown("### Filter History by Routine / Focus")
-      df_analytics["Routine / Focus"] = df_analytics[
-          "Routine / Focus"
-      ].fillna("Unassigned")
-      unique_routines = sorted(df_analytics["Routine / Focus"].unique().tolist())
-      selected_routine = st.selectbox(
-          "Select Routine to Inspect", unique_routines, key="analytics_routine"
-      )
-      filtered_df = df_analytics[
-          df_analytics["Routine / Focus"] == selected_routine
-      ]
-      st.dataframe(filtered_df.head(100), use_container_width=True)
-    else:
-      st.info("Add strength workout entries to generate performance charts.")
-
-  with an_tab2:
-    df_cardio_an = fetch_cardio(st.session_state.username)
-    if not df_cardio_an.empty:
-      st.markdown("### Cardio Distance Over Time")
-      cardio_chart_data = df_cardio_an[["Date", "Distance (km)"]].dropna()
-      if not cardio_chart_data.empty:
-        st.line_chart(
-            cardio_chart_data.set_index("Date"), use_container_width=True
-        )
-
-      st.markdown("---")
-      st.markdown("### Cardio Logs History")
-      st.dataframe(df_cardio_an.head(100), use_container_width=True)
-    else:
-      st.info("Log cardio sessions to view performance analytics!")
-
-
-# ==========================================
-# PAGE 5: GLOSSARY & FEEDBACK
-# ==========================================
-elif selected_page == "📖 Glossary & Feedback":
-  st.subheader("📖 Glossary & Definitions")
-  st.markdown("""
-  * **RPE (Rate of Perceived Exertion):** A scale from 1 to 10 measuring how intense a set felt. 10 is absolute failure, while 7-8 leaves 2-3 reps in reserve (RIR).
-  * **Total Volume:** The total weight lifted calculated as Sets × Reps × Weight. Used to track progressive overload over time.
-  * **Pace:** The time taken per kilometer during a cardio session, automatically calculated from distance and duration.
-  * **Body Recomposition:** The simultaneous process of building muscle mass while reducing body fat percentage.
-  """)
-
-  st.markdown("---")
-  st.subheader("💬 Feedback & Reviews")
-  st.write(
-      "Share your thoughts, feature requests, or bug reports regarding the"
-      " Workout Master Suite."
-  )
-
-  with st.form("review_form"):
-    tester_name = st.text_input(
-        "Your Name / Handle", value=st.session_state.username
-    )
-    rating = st.slider("Rating", min_value=1, max_value=5, value=5)
-    category = st.selectbox(
-        "Category",
-        [
-            "Feature Request",
-            "Bug Report",
-            "UI/UX Feedback",
-            "General Praise",
-        ],
-    )
-    message = st.text_area(
-        "Message / Feedback", placeholder="Type your feedback here..."
-    )
-    submit_review = st.form_submit_button("Submit Review")
-
-    if submit_review:
-      try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        current_date = datetime.today().strftime("%Y/%m/%d")
-        current_time_str = datetime.now().strftime("%H:%M:%S")
-        cursor.execute(
-            """
-                INSERT INTO reviews (date, time, tester_name, rating, category, message)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                current_date,
-                current_time_str,
-                tester_name,
-                rating,
-                category,
-                message,
-            ),
-        )
-        conn.commit()
-        st.cache_data.clear()
-
-        st.success("Thank you! Your feedback has been successfully submitted.")
-      except Exception as e:
-        st.error(f"Error submitting review: {e}")
-
-
-# ==========================================
-# PAGE 6: ADMIN DASHBOARD
-# ==========================================
-elif selected_page == "🔒 Admin Dashboard":
-  st.subheader("🔒 Admin Dashboard (Maker Only)")
-  st.write(
-      "Enter the Admin PIN to view incoming user reviews and manage accounts."
-  )
-
-  admin_pin = st.text_input("Admin PIN", type="password", key="admin_pin_input")
-
-  if admin_pin == "2026":
-    st.success("Admin access granted!")
-
-    # --- USER-SPECIFIC RESET / DELETE SECTION ---
-    st.markdown("---")
-    st.markdown("### 👤 Particular User Account Reset & Deletion")
-    st.write(
-        "Select a specific user account to wipe their profile, password, and all"
-        " workouts, cardio, and body weight logs."
-    )
-
-    try:
-      conn = get_db_connection()
-      df_users = pd.read_sql_query("SELECT username FROM profiles", conn)
-
-      if not df_users.empty:
-        user_list = df_users["username"].tolist()
-        selected_user_to_reset = st.selectbox(
-            "Select User Account", user_list, key="select_user_to_reset"
-        )
-
-        col_u1, col_u2 = st.columns([2, 1])
-        with col_u1:
-          st.warning(
-              f"This will permanently delete user **{selected_user_to_reset}**"
-              " and all their associated data."
-          )
-        with col_u2:
-          if st.button(
-              f"🗑️ Delete User '{selected_user_to_reset}'",
-              type="primary",
-              key="btn_del_specific_user",
-          ):
-            delete_user_data(selected_user_to_reset)
-            if st.session_state.username == selected_user_to_reset:
-              st.session_state.logged_in = False
-              st.session_state.username = None
-              st.session_state.pop("current_loaded_user", None)
-            st.success(
-                f"Successfully deleted user '{selected_user_to_reset}' and all"
-                " associated data!"
-            )
-            st.rerun()
-      else:
-        st.info("No registered user accounts found.")
-    except Exception as e:
-      st.error(f"Error loading user accounts: {e}")
-
-    # --- DANGER ZONE: GLOBAL DATABASE RESET ---
-    st.markdown("---")
-    with st.expander("⚠️ Danger Zone: Global Database Reset", expanded=False):
-      st.warning(
-          "Clicking this button will permanently delete ALL user accounts and"
-          " data across the entire app, reverting to the default `Modiri`"
-          " account."
-      )
-      if st.button(
-          "🗑️ Wipe & Reset Entire Database Now",
-          type="primary",
-          key="btn_reset_db",
-      ):
-        reset_database()
-        st.session_state.logged_in = False
-        st.session_state.username = None
-        st.session_state.pop("current_loaded_user", None)
-        st.success(
-            "Database has been completely wiped and reset for everyone!"
-        )
-        st.rerun()
-
-    st.markdown("---")
-    st.markdown("### 📋 Submitted Reviews History")
-    try:
-      conn = get_db_connection()
-      df_reviews = pd.read_sql_query(
-          "SELECT date AS Date, time AS Time, tester_name AS 'Tester', rating AS"
-          " 'Rating (1-5)', category AS Category, message AS Message FROM"
-          " reviews ORDER BY id DESC",
-          conn,
-      )
-
-      if not df_reviews.empty:
-        st.dataframe(df_reviews.head(50), use_container_width=True)
-      else:
-        st.info("No reviews submitted yet.")
-    except Exception as e:
-      st.info(f"Could not load reviews: {e}")
-  elif admin_pin != "":
-    st.error("Incorrect Admin PIN.")
-  else:
-    st.info("Please enter your Admin PIN to unlock the admin dashboard.")
+    st.success("Goals updated successfully!")
