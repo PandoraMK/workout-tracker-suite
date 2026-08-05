@@ -10,6 +10,10 @@ CURRENT_VERSION = "v1.3.3"
 CHANGELOG = {
     "v1.3.3": [
         (
+            "👥 Added a **Registered User Profiles** tracking table back to the"
+            " Admin Dashboard."
+        ),
+        (
             "✏️ Full **Edit & Update** support maintained for both strength"
             " workouts and cardio sessions."
         ),
@@ -590,7 +594,6 @@ if "selected_page" not in locals() and "selected_page" not in globals():
 if selected_page == "📝 Logger Form":
   st.subheader("Add Workout or Cardio Activity")
 
-
   @st.fragment
   def render_logger_fragment():
     log_type = st.radio(
@@ -982,57 +985,39 @@ if selected_page == "📝 Logger Form":
                 key="edit_w_date",
             )
             e_routine = st.text_input(
-                "Routine / Focus",
-                value=w_row["Routine / Focus"],
-                key="edit_w_routine",
+                "Routine / Focus", value=w_row["Routine / Focus"]
             )
-            e_exercise = st.text_input(
-                "Exercise Name", value=w_row["Exercise"], key="edit_w_exercise"
-            )
-
-            ec1, ec2, ec3 = st.columns(3)
-            with ec1:
+            e_exercise = st.text_input("Exercise", value=w_row["Exercise"])
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
               e_sets = st.number_input(
-                  "Sets",
-                  min_value=1,
-                  max_value=50,
-                  value=int(w_row["Sets"]),
-                  key="edit_w_sets",
+                  "Sets", min_value=1, value=int(w_row["Sets"])
               )
-            with ec2:
+            with c2:
               e_reps = st.number_input(
-                  "Reps",
-                  min_value=1,
-                  max_value=200,
-                  value=int(w_row["Reps"]),
-                  key="edit_w_reps",
+                  "Reps", min_value=1, value=int(w_row["Reps"])
               )
-            with ec3:
+            with c3:
               e_weight = st.text_input(
-                  "Weight (e.g. 40kg or 40kg & 45kg)",
-                  value=str(w_row["Weight (kg)"]),
-                  key="edit_w_weight",
+                  "Weight description", value=str(w_row["Weight (kg)"])
+              )
+            with c4:
+              e_rpe = st.number_input(
+                  "RPE", min_value=1.0, max_value=10.0, value=float(w_row["RPE (1-10)"])
               )
 
-            ec4, _ = st.columns(2)
-            with ec4:
-              e_rpe = st.slider(
-                  "RPE (1-10)",
-                  1.0,
-                  10.0,
-                  float(w_row["RPE (1-10)"]),
-                  0.5,
-                  key="edit_w_rpe",
+            col_upd, col_del = st.columns(2)
+            with col_upd:
+              update_w_btn = st.form_submit_button(
+                  "Update Workout", type="primary"
               )
+            with col_del:
+              delete_w_btn = st.form_submit_button("Delete Workout")
 
-            submitted_edit_w = st.form_submit_button(
-                "Update Workout Entry", type="primary"
-            )
-            if submitted_edit_w:
+            if update_w_btn:
               try:
                 conn = get_db_connection()
                 cursor = conn.cursor()
-                date_str = e_date.strftime("%Y/%m/%d")
                 cursor.execute(
                     """
                                     UPDATE workouts 
@@ -1040,83 +1025,45 @@ if selected_page == "📝 Logger Form":
                                     WHERE id = ? AND username = ?
                                 """,
                     (
-                        date_str,
+                        e_date.strftime("%Y/%m/%d"),
                         e_routine,
                         e_exercise,
                         int(e_sets),
                         int(e_reps),
                         e_weight,
                         float(e_rpe),
-                        selected_workout_id,
+                        int(selected_workout_id),
                         st.session_state.username,
                     ),
                 )
                 conn.commit()
                 st.cache_data.clear()
-                st.success("Workout entry updated successfully!")
+                st.success("Workout entry successfully updated!")
                 st.rerun()
               except Exception as e:
-                st.error(f"Error updating workout entry: {e}")
+                st.error(f"Error updating workout: {e}")
 
-      # --- DELETE WORKOUT ENTRY EXPANDER ---
-      with st.expander("🗑️ Manage & Delete Workout Entries", expanded=False):
-        st.write("Select specific workout entry IDs to delete.")
-        workout_options = dict(
-            zip(
-                df_log["id"],
-                df_log["Date"]
-                + " | "
-                + df_log["Routine / Focus"]
-                + " | "
-                + df_log["Exercise"]
-                + " ("
-                + df_log["Weight (kg)"]
-                + ")",
-            )
-        )
-        selected_to_delete = st.multiselect(
-            "Choose workout entries to remove",
-            options=list(workout_options.keys()),
-            format_func=lambda x: workout_options[x],
-            key="del_workouts_multi",
-        )
-
-        if st.button("Delete Selected Workout Entries", type="primary"):
-          if selected_to_delete:
-            try:
-              conn = get_db_connection()
-              cursor = conn.cursor()
-              cursor.executemany(
-                  "DELETE FROM workouts WHERE id = ? AND username = ?",
-                  [
-                      (wid, st.session_state.username)
-                      for wid in selected_to_delete
-                  ],
-              )
-              conn.commit()
-              st.cache_data.clear()
-
-              st.success(
-                  f"Successfully deleted {len(selected_to_delete)} workout"
-                  " entry/entries!"
-              )
-              st.rerun()
-            except Exception as e:
-              st.error(f"Error deleting entries: {e}")
-          else:
-            st.warning("Please select at least one entry to delete.")
+            if delete_w_btn:
+              try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM workouts WHERE id = ? AND username = ?",
+                    (int(selected_workout_id), st.session_state.username),
+                )
+                conn.commit()
+                st.cache_data.clear()
+                st.success("Workout entry deleted successfully!")
+                st.rerun()
+              except Exception as e:
+                st.error(f"Error deleting workout: {e}")
     else:
-      st.info(
-          f"No strength workout entries logged for {st.session_state.username}"
-          " yet."
-      )
+      st.info("No strength workout logs found yet. Start logging above!")
 
   with sub_tab_prev2:
     df_cardio_log = fetch_cardio(st.session_state.username)
     if not df_cardio_log.empty:
-      st.dataframe(
-          df_cardio_log.drop(columns=["id"]).head(50), use_container_width=True
-      )
+      st.dataframe(df_cardio_log.drop(columns=["id"]).head(50), use_container_width=True)
 
       # --- EDIT CARDIO ENTRY EXPANDER ---
       with st.expander("✏️ Edit Cardio Entries", expanded=False):
@@ -1128,7 +1075,7 @@ if selected_page == "📝 Logger Form":
                 + df_cardio_log["Activity"]
                 + " ("
                 + df_cardio_log["Distance (km)"].astype(str)
-                + "km)",
+                + " km)",
             )
         )
         selected_cardio_id = st.selectbox(
@@ -1139,341 +1086,286 @@ if selected_page == "📝 Logger Form":
         )
 
         if selected_cardio_id:
-          c_row = df_cardio_log[df_cardio_log["id"] == selected_cardio_id].iloc[
-              0
-          ]
+          c_row = df_cardio_log[df_cardio_log["id"] == selected_cardio_id].iloc[0]
           with st.form("edit_cardio_form"):
             ec_date = st.date_input(
                 "Cardio Date",
                 datetime.strptime(c_row["Date"], "%Y/%m/%d").date(),
                 key="edit_c_date",
             )
-            ec_activity = st.text_input(
-                "Activity Name",
-                value=c_row["Activity"],
-                key="edit_c_activity",
-            )
-
+            ec_activity = st.text_input("Activity", value=c_row["Activity"])
             cc1, cc2, cc3 = st.columns(3)
             with cc1:
               ec_dist = st.number_input(
-                  "Distance (km)",
-                  min_value=0.0,
-                  max_value=200.0,
-                  value=float(c_row["Distance (km)"]),
-                  step=0.1,
-                  key="edit_c_dist",
+                  "Distance (km)", min_value=0.1, value=float(c_row["Distance (km)"])
               )
             with cc2:
               ec_dur = st.number_input(
-                  "Duration (mins)",
-                  min_value=1,
-                  max_value=1000,
-                  value=int(c_row["Duration (mins)"]),
-                  key="edit_c_dur",
+                  "Duration (mins)", min_value=1, value=int(c_row["Duration (mins)"])
               )
             with cc3:
               ec_hr = st.number_input(
-                  "Avg HR (bpm)",
-                  min_value=0,
-                  max_value=250,
-                  value=int(c_row["Avg HR (bpm)"]),
-                  key="edit_c_hr",
+                  "Avg HR (bpm)", min_value=0, value=int(c_row["Avg HR (bpm)"])
               )
 
-            submitted_edit_c = st.form_submit_button(
-                "Update Cardio Entry", type="primary"
-            )
-            if submitted_edit_c:
+            col_updc, col_delc = st.columns(2)
+            with col_updc:
+              update_c_btn = st.form_submit_button(
+                  "Update Cardio", type="primary"
+              )
+            with col_delc:
+              delete_c_btn = st.form_submit_button("Delete Cardio")
+
+            if update_c_btn:
               try:
                 conn = get_db_connection()
                 cursor = conn.cursor()
-                c_date_str = ec_date.strftime("%Y/%m/%d")
-
-                # Recalculate pace automatically
-                if ec_dist > 0:
-                  p_mins = int(ec_dur // ec_dist)
-                  p_secs = int(((ec_dur / ec_dist) - p_mins) * 60)
-                  ec_pace = f"{p_mins}m {p_secs}s / km"
-                else:
-                  ec_pace = "N/A"
-
                 cursor.execute(
                     """
                                     UPDATE cardio 
-                                    SET date = ?, activity = ?, distance = ?, duration = ?, avg_hr = ?, pace = ?
+                                    SET date = ?, activity = ?, distance = ?, duration = ?, avg_hr = ?
                                     WHERE id = ? AND username = ?
                                 """,
                     (
-                        c_date_str,
+                        ec_date.strftime("%Y/%m/%d"),
                         ec_activity,
                         float(ec_dist),
                         int(ec_dur),
                         int(ec_hr),
-                        ec_pace,
-                        selected_cardio_id,
+                        int(selected_cardio_id),
                         st.session_state.username,
                     ),
                 )
                 conn.commit()
                 st.cache_data.clear()
-                st.success("Cardio entry updated successfully!")
+                st.success("Cardio entry successfully updated!")
                 st.rerun()
               except Exception as e:
-                st.error(f"Error updating cardio entry: {e}")
+                st.error(f"Error updating cardio: {e}")
 
-      # --- DELETE CARDIO ENTRY EXPANDER ---
-      with st.expander("🗑️ Manage & Delete Cardio Entries", expanded=False):
-        st.write("Select specific cardio entry IDs to delete.")
-        cardio_options = dict(
-            zip(
-                df_cardio_log["id"],
-                df_cardio_log["Date"]
-                + " | "
-                + df_cardio_log["Activity"]
-                + " ("
-                + df_cardio_log["Distance (km)"].astype(str)
-                + "km, "
-                + df_cardio_log["Duration (mins)"].astype(str)
-                + "m)",
-            )
-        )
-        selected_cardio_to_delete = st.multiselect(
-            "Choose cardio entries to remove",
-            options=list(cardio_options.keys()),
-            format_func=lambda x: cardio_options[x],
-            key="del_cardio_multi",
-        )
-
-        if st.button("Delete Selected Cardio Entries", type="primary"):
-          if selected_cardio_to_delete:
-            try:
-              conn = get_db_connection()
-              cursor = conn.cursor()
-              cursor.executemany(
-                  "DELETE FROM cardio WHERE id = ? AND username = ?",
-                  [
-                      (cid, st.session_state.username)
-                      for cid in selected_cardio_to_delete
-                  ],
-              )
-              conn.commit()
-              st.cache_data.clear()
-
-              st.success(
-                  f"Successfully deleted {len(selected_cardio_to_delete)}"
-                  " cardio entry/entries!"
-              )
-              st.rerun()
-            except Exception as e:
-              st.error(f"Error deleting cardio entries: {e}")
-          else:
-            st.warning("Please select at least one entry to delete.")
+            if delete_c_btn:
+              try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM cardio WHERE id = ? AND username = ?",
+                    (int(selected_cardio_id), st.session_state.username),
+                )
+                conn.commit()
+                st.cache_data.clear()
+                st.success("Cardio entry deleted successfully!")
+                st.rerun()
+              except Exception as e:
+                st.error(f"Error deleting cardio: {e}")
     else:
-      st.info(f"No cardio entries logged for {st.session_state.username} yet.")
+      st.info("No cardio session logs found yet.")
 
 # ==========================================
 # PAGE 2: GOALS & WORKOUT PLAN
 # ==========================================
 elif selected_page == "🎯 Goals & Workout Plan":
-  st.subheader("🎯 Goals & Detailed Plan Logger")
-  st.write(
-      "Define your primary fitness objective, configure your custom training"
-      " days, and log completed sessions with precise metrics."
-  )
+  st.subheader("🎯 Athlete Goals & Target Settings")
 
-  goal_options = [
-      "Body Recomposition (Fat Loss & Muscle Gain)",
-      "Hypertrophy / Muscle Building",
-      "Strength & Power Focus",
-      "Cardiovascular Endurance & Running",
-  ]
-
-  current_goal_idx = (
-      goal_options.index(st.session_state.goal)
-      if st.session_state.goal in goal_options
-      else 0
-  )
-
-  selected_goal = st.selectbox(
-      "What is your primary fitness goal?", goal_options, index=current_goal_idx
-  )
-
-  c_g1, c_g2 = st.columns(2)
-  with c_g1:
-    target_bw_input = st.number_input(
-        "Target Body Weight (kg)",
-        min_value=40.0,
-        max_value=200.0,
-        value=float(st.session_state.target_bw),
-        step=0.5,
-    )
-  with c_g2:
-    target_bf_input = st.number_input(
-        "Target Body Fat Percentage (%)",
-        min_value=5.0,
-        max_value=50.0,
-        value=float(st.session_state.target_bf),
-        step=0.5,
+  with st.form("goals_form"):
+    st.session_state.goal = st.selectbox(
+        "Primary Training Goal",
+        [
+            "Body Recomposition (Fat Loss & Muscle Gain)",
+            "Hypertrophy (Maximum Muscle Mass)",
+            "Strength & Powerlifting",
+            "Fat Loss & Endurance",
+            "General Fitness & Health",
+        ],
+        index=0
+        if "Body Recomposition" in st.session_state.goal
+        else 0,
     )
 
-  if st.button("Save Goal & Plan Settings"):
-    st.session_state.goal = selected_goal
-    st.session_state.target_bw = target_bw_input
-    st.session_state.target_bf = target_bf_input
+    colg1, colg2 = st.columns(2)
+    with colg1:
+      st.session_state.target_bw = st.number_input(
+          "Target Body Weight (kg)",
+          min_value=30.0,
+          max_value=250.0,
+          value=float(st.session_state.target_bw),
+          step=0.5,
+      )
+    with colg2:
+      st.session_state.target_bf = st.number_input(
+          "Target Body Fat Percentage (%)",
+          min_value=5.0,
+          max_value=50.0,
+          value=float(st.session_state.target_bf),
+          step=0.5,
+      )
 
-    updated_profile = {
-        "body_weight": st.session_state.body_weight,
-        "gender": st.session_state.gender,
-        "age": st.session_state.age,
-        "height": st.session_state.height,
-        "goal": st.session_state.goal,
-        "target_bw": st.session_state.target_bw,
-        "target_bf": st.session_state.target_bf,
-        "last_seen_version": st.session_state.last_seen_version,
-    }
-    save_profile_db(st.session_state.username, updated_profile)
-    st.success("Goals updated successfully!")
+    if st.form_submit_button("Save Goals & Targets", type="primary"):
+      updated_profile = {
+          "body_weight": st.session_state.body_weight,
+          "gender": st.session_state.gender,
+          "age": st.session_state.age,
+          "height": st.session_state.height,
+          "goal": st.session_state.goal,
+          "target_bw": st.session_state.target_bw,
+          "target_bf": st.session_state.target_bf,
+          "last_seen_version": st.session_state.last_seen_version,
+      }
+      save_profile_db(st.session_state.username, updated_profile)
+      st.success("Goals updated and synchronized to profile!")
+
+  st.markdown("---")
+  st.subheader("📋 Recommended Weekly Split")
+  st.markdown("""
+* **Day 1: Upper Body A** (Bench Press, Incline DB Press, Overhead Press, Lateral Raises, Triceps)
+* **Day 2: Lower Body A** (Back Squat, Leg Press, Extensions, Hamstring Curls, RDLs, Calves)
+* **Day 3: Upper Body B** (Lat Pulldowns, Seated Rows, Pull-ups, Barbell Rows, Face Pulls)
+* **Day 4: Lower Body B** (Bulgarian Split Squats, Goblet Squats, Leg Extensions, RDLs, Calves)
+* **Day 5: Core & Cardio** (Ab Machines, Cable Crunches, Hanging Leg Raises, Keiser Bicycle)
+""")
 
 # ==========================================
 # PAGE 3: BODY WEIGHT TRACKER
 # ==========================================
 elif selected_page == "⚖️ Body Weight Tracker":
-  st.subheader("⚖️ Body Weight Tracker")
-  st.write("Log your daily or weekly body weight to track progress over time.")
+  st.subheader("⚖️ Body Weight Progress & Trend Tracker")
 
   with st.form("bw_form"):
-    c1, c2 = st.columns(2)
-    with c1:
-      logged_bw = st.number_input(
+    colw1, colw2, colw3 = st.columns(3)
+    with colw1:
+      log_bw = st.number_input(
           "Body Weight (kg)",
           min_value=30.0,
           max_value=250.0,
           value=float(st.session_state.body_weight),
           step=0.1,
       )
-    with c2:
-      bw_date = st.date_input("Date", datetime.today(), key="bw_date_input")
+    with colw2:
+      log_bw_date = st.date_input("Date", datetime.today())
+    with colw3:
+      log_bw_notes = st.text_input("Notes (e.g., Morning weigh-in)", "Morning fasting")
 
-    bw_notes = st.text_input("Notes (Optional)", "")
-    submitted_bw = st.form_submit_button("Save Body Weight", type="primary")
-
-    if submitted_bw:
+    if st.form_submit_button("Log Body Weight", type="primary"):
       try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        date_str = bw_date.strftime("%Y/%m/%d")
         cursor.execute(
             """
                     INSERT INTO body_weight (username, date, body_weight, notes)
                     VALUES (?, ?, ?, ?)
                 """,
-            (st.session_state.username, date_str, logged_bw, bw_notes),
+            (
+                st.session_state.username,
+                log_bw_date.strftime("%Y/%m/%d"),
+                float(log_bw),
+                log_bw_notes,
+            ),
         )
         conn.commit()
         st.cache_data.clear()
-        st.success(
-            f"Successfully recorded body weight ({logged_bw} kg) for"
-            f" {st.session_state.username}!"
-        )
+        st.success(f"Successfully logged body weight: {log_bw}kg!")
         st.rerun()
       except Exception as e:
-        st.error(f"Error saving body weight: {e}")
+        st.error(f"Error logging body weight: {e}")
 
-  st.markdown("---")
   df_bw = fetch_body_weight(st.session_state.username)
   if not df_bw.empty:
-    st.markdown("### 📈 Body Weight History")
-    st.dataframe(df_bw.drop(columns=["id"]), use_container_width=True)
+    st.markdown("---")
+    st.subheader("📈 Body Weight Chart")
+    chart_df = df_bw.set_index("Date")[["Body Weight (kg)"]]
+    st.line_chart(chart_df)
 
-    chart_data = df_bw.set_index("Date")[["Body Weight (kg)"]]
-    st.line_chart(chart_data)
+    st.markdown("---")
+    st.subheader("📋 Weight Logs History")
+    st.dataframe(df_bw.drop(columns=["id"]), use_container_width=True)
   else:
-    st.info(
-        f"No body weight records found for {st.session_state.username} yet."
-    )
+    st.info("No body weight entries recorded yet. Add your first entry above!")
 
 # ==========================================
 # PAGE 4: PROGRESS & ANALYTICS
 # ==========================================
 elif selected_page == "📈 Progress & Analytics":
-  st.subheader("📈 Progress & Analytics Dashboard")
-  st.write(
-      "Analyze your overall training volume, strength progression, and workout"
-      " frequency."
-  )
+  st.subheader("📈 Training Volume & Performance Analytics")
+  df_analytics_workouts = fetch_workouts(st.session_state.username)
 
-  df_workouts = fetch_workouts(st.session_state.username)
-  df_cardio = fetch_cardio(st.session_state.username)
+  if not df_analytics_workouts.empty:
+    total_workouts_logged = len(df_analytics_workouts)
+    unique_routines_count = df_analytics_workouts["Routine / Focus"].nunique()
 
-  c1, c2, c3 = st.columns(3)
-  with c1:
-    st.metric(
-        "Total Workouts Logged",
-        len(df_workouts) if not df_workouts.empty else 0,
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+      st.metric("Total Exercise Entries Logged", total_workouts_logged)
+    with col_m2:
+      st.metric("Unique Routines Focused On", unique_routines_count)
+
+    st.markdown("---")
+    st.subheader("🔍 Exercise Progression Breakdown")
+    selected_ex_filter = st.selectbox(
+        "Select Exercise to Inspect",
+        df_analytics_workouts["Exercise"].unique(),
     )
-  with c2:
-    st.metric(
-        "Total Cardio Sessions", len(df_cardio) if not df_cardio.empty else 0
-    )
-  with c3:
-    st.metric("Primary Goal", st.session_state.goal.split("(")[0])
-
-  st.markdown("---")
-  if not df_workouts.empty:
-    st.markdown("### 🏋️ Strength Workouts Overview")
-    st.dataframe(df_workouts.head(15), use_container_width=True)
+    ex_filtered_df = df_analytics_workouts[
+        df_analytics_workouts["Exercise"] == selected_ex_filter
+    ].sort_values("Date")
+    st.dataframe(ex_filtered_df.drop(columns=["id"]), use_container_width=True)
   else:
-    st.info("Log some strength workouts to view progress analytics.")
+    st.info("Log some workout entries to unlock advanced analytics and progress charts!")
 
 # ==========================================
 # PAGE 5: GLOSSARY & FEEDBACK
 # ==========================================
 elif selected_page == "📖 Glossary & Feedback":
-  st.subheader("📖 Fitness Glossary & User Feedback")
+  st.subheader("📖 Training Glossary & Developer Feedback")
 
-  tab_glossary, tab_feedback = st.tabs(["📚 Glossary", "💬 Send Feedback"])
-
-  with tab_glossary:
+  with st.expander("📚 Fitness & Lifting Terminology Glossary", expanded=False):
     st.markdown("""
-- **RPE (Rate of Perceived Exertion):** A scale from 1 to 10 measuring how difficult a set was (10 being absolute maximum effort).
-- **Volume:** Calculated as Sets $\times$ Reps $\times$ Weight, reflecting total work performed.
-- **Hypertrophy:** Muscle building through mechanical tension and progressive overload.
+* **RPE (Rate of Perceived Exertion):** A scale from 1 to 10 estimating how many reps you had left in the tank (10 = absolute failure).
+* **Volume:** Total amount of weight lifted calculated as $Sets \\times Reps \\times Weight$.
+* **Body Recomposition:** The simultaneous process of building muscle mass while losing body fat.
 """)
 
-  with tab_feedback:
-    with st.form("feedback_form"):
-      rating = st.slider("Rating (1-5 Stars)", 1, 5, 5)
-      category = st.selectbox(
-          "Category", ["Bug Report", "Feature Request", "General Comment"]
-      )
-      message = st.text_area("Your Feedback / Message")
-      submitted_feedback = st.form_submit_button(
-          "Submit Feedback", type="primary"
-      )
+  st.markdown("---")
+  st.subheader("💬 Send Feedback or Feature Request to Developer")
+  with st.form("feedback_form"):
+    f_tester = st.text_input("Your Name", value=st.session_state.username)
+    f_rating = st.slider("App Experience Rating (1-5)", 1, 5, 5)
+    f_cat = st.selectbox(
+        "Category",
+        [
+            "General Feedback",
+            "Bug Report",
+            "Feature Request",
+            "UI / UX Improvement",
+        ],
+    )
+    f_msg = st.text_area(
+        "Your Message / Suggestion",
+        placeholder="Type your feedback or bug report here...",
+    )
 
-      if submitted_feedback:
+    if st.form_submit_button("Submit Feedback", type="primary"):
+      if not f_msg.strip():
+        st.warning("Please type a message before submitting.")
+      else:
         try:
           conn = get_db_connection()
           cursor = conn.cursor()
-          today_str = datetime.today().strftime("%Y/%m/%d")
-          time_str = datetime.now().strftime("%H:%M:%S")
+          now_dt = datetime.now()
           cursor.execute(
               """
-                        INSERT INTO reviews (date, time, tester_name, rating, category, message)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """,
+                            INSERT INTO reviews (date, time, tester_name, rating, category, message)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """,
               (
-                  today_str,
-                  time_str,
-                  st.session_state.username,
-                  rating,
-                  category,
-                  message,
+                  now_dt.strftime("%Y/%m/%d"),
+                  now_dt.strftime("%H:%M:%S"),
+                  f_tester,
+                  int(f_rating),
+                  f_cat,
+                  f_msg,
               ),
           )
           conn.commit()
-          st.success("Thank you! Your feedback has been submitted successfully.")
+          st.success("Thank you! Your feedback has been sent to the developer.")
         except Exception as e:
           st.error(f"Error submitting feedback: {e}")
 
@@ -1481,70 +1373,78 @@ elif selected_page == "📖 Glossary & Feedback":
 # PAGE 6: ADMIN DASHBOARD
 # ==========================================
 elif selected_page == "🔒 Admin Dashboard":
-  st.subheader("🔒 Admin Dashboard")
-  st.write("Manage application data, reset databases, or review user feedback.")
+  st.subheader("🔒 Administrator & Database Diagnostic Dashboard")
 
   admin_pin = st.text_input("Enter Admin PIN", type="password")
+
   if admin_pin == "2026":
-    st.success("Admin access granted.")
-
-    col_adm1, _ = st.columns(2)
-    with col_adm1:
-      if st.button("⚠️ Reset Entire Database", type="primary"):
-        reset_database()
-        st.success("Database completely reset!")
-        st.rerun()
-
+    st.success("Admin Access Granted.")
     st.markdown("---")
-    st.markdown("### 👥 Registered Users / Profiles")
-    try:
-      conn = get_db_connection()
-      df_profiles = pd.read_sql_query(
-          "SELECT username AS Username, body_weight AS 'Body Weight (kg)',"
-          " gender AS Gender, age AS Age, height AS 'Height (cm)', goal AS"
-          " Goal, target_bw AS 'Target BW (kg)', target_bf AS 'Target BF (%)',"
-          " last_seen_version AS 'Last Version' FROM profiles",
-          conn,
+
+    sub_adm1, sub_adm2, sub_adm3 = st.tabs(
+        ["👥 Registered User Profiles", "💬 User Feedback / Reviews", "⚙️ Database Control"]
+    )
+
+    with sub_adm1:
+      st.markdown("### 👥 Registered User Profiles")
+      try:
+        conn = get_db_connection()
+        df_profiles = pd.read_sql_query(
+            "SELECT username, body_weight, gender, age, height, goal, target_bw,"
+            " target_bf, last_seen_version FROM profiles",
+            conn,
+        )
+        if not df_profiles.empty:
+          st.dataframe(df_profiles, use_container_width=True)
+        else:
+          st.warning("No registered user profiles found in database.")
+      except Exception as e:
+        st.error(f"Error fetching profiles: {e}")
+
+    with sub_adm2:
+      st.markdown("### 💬 User Reviews & Submissions")
+      try:
+        conn = get_db_connection()
+        df_reviews = pd.read_sql_query("SELECT * FROM reviews ORDER BY id DESC", conn)
+        if not df_reviews.empty:
+          st.dataframe(df_reviews, use_container_width=True)
+        else:
+          st.info("No reviews submitted yet.")
+      except Exception as e:
+        st.error(f"Error loading reviews: {e}")
+
+    with sub_adm3:
+      st.markdown("### ⚙️ Database Diagnostics & Reset Control")
+      st.warning(
+          "⚠️ **Danger Zone:** Resetting the database drops all tables and re-seeds"
+          " initial default structures."
       )
-      if not df_profiles.empty:
-        st.dataframe(df_profiles, use_container_width=True)
-      else:
-        st.info("No user profiles found.")
-    except Exception as e:
-      st.error(f"Could not load user profiles: {e}")
 
-    st.markdown("---")
-    st.markdown("### 📋 User Feedback Received")
-    try:
-      conn = get_db_connection()
-      df_reviews = pd.read_sql_query("SELECT * FROM reviews", conn)
-      if not df_reviews.empty:
-        st.dataframe(df_reviews, use_container_width=True)
-      else:
-        st.info("No feedback submissions yet.")
-    except Exception as e:
-      st.error(f"Could not load reviews: {e}")
-  else:
-    st.info("Please enter the correct admin PIN to unlock dashboard controls.")
+      confirm_reset = st.checkbox(
+          "I understand this will permanently delete ALL user data across the"
+          " suite."
+      )
+      if st.button("⚠️ Reset Entire Database", type="primary"):
+        if confirm_reset:
+          reset_database()
+          st.success("Database completely reset and re-initialized!")
+          st.rerun()
+        else:
+          st.error(
+              "Please check the confirmation box above to authorize a full database"
+              " reset."
+          )
+
+  elif admin_pin != "":
+    st.error("Incorrect Admin PIN.")
 
 # ==========================================
-# PAGE 7: WHAT'S NEW LOG SUB-PAGE
+# PAGE 7: WHAT'S NEW LOG
 # ==========================================
 elif selected_page == "📢 What's New Log":
-  st.subheader("📢 App Changelog & Update History")
-  st.write(
-      "Review all recent updates, features, and fixes deployed across different"
-      " versions of your Workout Master Suite."
-  )
+  st.subheader("📢 Release Notes & What's New Log")
 
-  for ver, updates in CHANGELOG.items():
-    with st.expander(
-        f"Version {ver} {'(Current)' if ver == CURRENT_VERSION else ''}",
-        expanded=(ver == CURRENT_VERSION),
-    ):
-      for update in updates:
-        st.markdown(f"- {update}")
-
-  st.markdown("---")
-  if st.button("Manually Trigger What's New Popup"):
-    show_whats_new_dialog()
+  for ver, bullets in CHANGELOG.items():
+    with st.expander(f"Version {ver}", expanded=(ver == CURRENT_VERSION)):
+      for bullet in bullets:
+        st.markdown(f"- {bullet}")
